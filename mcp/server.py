@@ -19,8 +19,8 @@ embeddings = OpenAIEmbeddings(model="text-embedding-3-small", api_key=os.environ
 
 
 def _get_jwt() -> str:
-    headers = get_http_headers()
-    authorization = headers.get("authorization") or headers.get("Authorization")
+    headers = get_http_headers(include={"authorization"})
+    authorization = headers.get("authorization")
     if not authorization or not authorization.startswith("Bearer "):
         raise ValueError("Missing Authorization header")
     return authorization.removeprefix("Bearer ")

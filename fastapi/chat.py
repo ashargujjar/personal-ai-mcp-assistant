@@ -1,20 +1,15 @@
 import os
-
 from langchain.messages import AIMessage,HumanMessage,SystemMessage,AnyMessage
 from langgraph.graph import add_messages,StateGraph,START,END
 from langchain_deepseek import ChatDeepSeek
 from typing import Annotated,Literal,List,Optional
 from pydantic import BaseModel,Field
 from langchain.tools import tool
-from langgraph.store.base import BaseStore
-from langgraph.store.memory import InMemoryStore
 from langgraph.prebuilt import ToolNode, tools_condition
-from langgraph.prebuilt import InjectedStore
-
 class State(BaseModel):
     messages: Annotated[list[AnyMessage], add_messages]
     routed_to: Optional[Literal["gmail", "github"]] = None
-
+from langgraph.checkpoint.memory import MemorySaver
 
 # tools all bind to supervisor for memory
 llm=ChatDeepSeek(
@@ -22,7 +17,8 @@ llm=ChatDeepSeek(
   api_key=os.environ["DEEPSEEK_KEY"],
   temperature=0.2
 )
-memory_store = InMemoryStore()
+checkpointer = MemorySaver()
+
 system_message=SystemMessage(content=(
    "You are a supervisor that manages two specialist agents (gmail, github) and the user's long-term memory. "
    "You have four tools:\n"
@@ -45,40 +41,9 @@ system_message=SystemMessage(content=(
 ))
 
 @tool
-def add_memory(key: str, value: str, *, store: Annotated[BaseStore, InjectedStore]) -> str:
-    """Save a fact about the user to long-term memory, keyed by topic (e.g. 'favorite_language')."""
-    store.put(("memories",), key, {"value": value})
-    return f"Saved: {key} = {value}"
-
-@tool
-def get_memory(key: Optional[str] = None, *, store: Annotated[BaseStore, InjectedStore]) -> str:
-    """Look up a saved fact about the user by key. Omit key to list everything remembered."""
-    if key:
-        item = store.get(("memories",), key)
-        return f"{key} = {item.value['value']}" if item else f"No memory found for '{key}'"
-    items = store.search(("memories",))
-    if not items:
-        return "No memories stored yet."
-    return "; ".join(f"{i.key} = {i.value['value']}" for i in items)
-
-@tool
 def route(agent: Literal["gmail", "github"]) -> str:
     """Hand off the conversation to the given specialist agent."""
     return agent
-
-@tool
-def delete_memory(key: str, *, store: Annotated[BaseStore, InjectedStore]) -> str:
-    """Delete a previously saved fact from long-term memory by its key."""
-    store.delete(("memories",), key)
-    return f"Deleted: {key}"
-tools=[add_memory,delete_memory,get_memory,route]
-llm_with_tools=llm.bind_tools(tools)
-def supervisor(state:State):
-  response = llm_with_tools.invoke([system_message, *state.messages])
-  return {"messages": [response], "routed_to": None}
-
-
-   
 
 def gmail(state:State):
   return{
@@ -92,45 +57,37 @@ def github(state:State):
 
 def after_tools(state: State):
     last_msg = state.messages[-1]        # the ToolMessage just produced
-    print("============ LAST MESSSAGE =========")
-    print(last_msg)
-    print("=======================================")
     if last_msg.name == "route":
         return last_msg.content          # "gmail" or "github" — route's own return value
     return "supervisor"
 
-builder=StateGraph(State)
-builder.add_node("supervisor",supervisor)
-builder.add_node("gmail",gmail)
-builder.add_node("github",github)
-builder.add_node("tools",ToolNode(tools))
 
-builder.add_edge(START,"supervisor")
-builder.add_conditional_edges("supervisor", tools_condition)
-builder.add_conditional_edges(
-    "tools", after_tools, {"gmail": "gmail", "github": "github", "supervisor": "supervisor"}
-)
+def build_graph(mcp_tools: list):
+    """Build a graph bound to this request's MCP tools (add_memory/get_memory/delete_memory).
 
-builder.add_edge("gmail","supervisor")
-builder.add_edge("github","supervisor")
+    These come from `mcp_client.get_mcp_tools(jwt)`, which is a per-request connection —
+    the tools carry a reference to that connection, so this needs to be called fresh for
+    every request, not once at import time.
+    """
+    tools = [*mcp_tools, route]
+    llm_with_tools = llm.bind_tools(tools)
 
-graph=builder.compile(store=memory_store)
+    def supervisor(state: State):
+        response = llm_with_tools.invoke([system_message, *state.messages])
+        return {"messages": [response], "routed_to": None}
 
-if __name__ == "__main__":
-    print("\n--- invoke 1: stream_mode='updates' (one chunk per node, as it finishes) ---")
-    for chunk in graph.stream(
-        {"messages": [HumanMessage(content="Hi, what can you help me with?. i love programming in js")]},
-        stream_mode="updates",
-    ):
-        print(chunk)
+    builder = StateGraph(State)
+    builder.add_node("supervisor", supervisor)
+    builder.add_node("gmail", gmail)
+    builder.add_node("github", github)
+    builder.add_node("tools", ToolNode(tools))
 
-    print("\n--- invoke 2: stream_mode='messages' (LLM tokens as they're generated) ---")
-    for token, metadata in graph.stream(
-        {"messages": [HumanMessage(content="Tell me a short fun fact.")]},
-        stream_mode="messages",
-    ):
-        print(token.content, end="", flush=True)
-    print()
+    builder.add_edge(START, "supervisor")
+    builder.add_conditional_edges("supervisor", tools_condition)
+    builder.add_conditional_edges(
+        "tools", after_tools, {"gmail": "gmail", "github": "github", "supervisor": "supervisor"}
+    )
 
-
-
+    builder.add_edge("gmail", "supervisor")
+    builder.add_edge("github", "supervisor")
+    return builder.compile(checkpointer=checkpointer)

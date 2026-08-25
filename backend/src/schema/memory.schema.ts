@@ -4,14 +4,20 @@ const EMBEDDING_DIM = 1536;
 
 const embeddingSchema = z
   .array(z.number())
-  .length(EMBEDDING_DIM, `Embedding must have exactly ${EMBEDDING_DIM} dimensions`);
+  .length(
+    EMBEDDING_DIM,
+    `Embedding must have exactly ${EMBEDDING_DIM} dimensions`,
+  );
 
 export const createMemorySchema = z.object({
   body: z.object({
     type: z.string().min(1, "type is required"),
-    key: z.string().min(1).optional(),
-    content: z.string().min(1, "content is required"),
-    metadata: z.record(z.any()).optional(),
+    key: z.string().min(1).nullable().optional(),
+    content: z
+      .string()
+      .min(1, "content is required")
+      .max(500, "content must be 500 characters or fewer"),
+    metadata: z.record(z.any()).nullable().optional(),
     embedding: embeddingSchema.optional(),
   }),
 });
@@ -26,7 +32,7 @@ export const updateMemorySchema = z.object({
     .object({
       type: z.string().min(1).optional(),
       key: z.string().min(1).nullable().optional(),
-      content: z.string().min(1).optional(),
+      content: z.string().min(1).max(500).optional(),
       metadata: z.record(z.any()).nullable().optional(),
       embedding: embeddingSchema.optional(),
     })

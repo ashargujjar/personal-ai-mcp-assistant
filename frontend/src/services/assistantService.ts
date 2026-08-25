@@ -1,6 +1,8 @@
-import { getCannedResponse, quickActions } from "@/mock/chat";
+import { quickActions } from "@/mock/chat";
 import { sleep } from "@/lib/utils";
 import type { ChatMessage, QuickAction, SourceCitation, ToolExecution } from "@/types";
+
+const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000/api";
 
 let messageCounter = 0;
 function nextId(prefix: string) {
@@ -20,45 +22,48 @@ export const assistantService = {
     return quickActions;
   },
 
-  /**
-   * Simulates a streaming assistant turn: tool calls resolve one at a time,
-   * then the final answer is returned. `onToolUpdate` lets the UI render
-   * live progress before the full result resolves.
-   */
   async sendMessage(
     prompt: string,
-    onToolUpdate?: (executions: ToolExecution[]) => void
+    threadId: string,
+    token: string | null,
+    onChunk: (partial: string) => void
   ): Promise<SendMessageResult> {
-    const canned = getCannedResponse(prompt);
-    const executions: ToolExecution[] = canned.toolExecutions.map((t) => ({
-      id: nextId("tool"),
-      label: t.label,
-      toolName: t.toolName,
-      status: "pending",
-    }));
+    const res = await fetch(`${API_URL}/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ chatText: prompt, threadId }),
+    });
 
-    onToolUpdate?.(executions.map((e) => ({ ...e })));
-
-    for (let i = 0; i < executions.length; i++) {
-      await sleep(280 + Math.random() * 220);
-      executions[i] = { ...executions[i], status: "running" };
-      onToolUpdate?.(executions.map((e) => ({ ...e })));
-      await sleep(180 + Math.random() * 160);
-      executions[i] = {
-        ...executions[i],
-        status: "completed",
-        durationMs: Math.round(40 + Math.random() * 300),
-      };
-      onToolUpdate?.(executions.map((e) => ({ ...e })));
+    if (!res.ok || !res.body) {
+      const errorText = await res.text().catch(() => "");
+      throw new Error(errorText || "Failed to reach the assistant");
     }
 
-    await sleep(300);
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let content = "";
 
-    return {
-      toolExecutions: executions,
-      content: canned.content,
-      sources: canned.sources,
-    };
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      const frames = buffer.split("\n\n");
+      buffer = frames.pop() ?? ""; // last piece may be incomplete, keep it for the next read
+
+      for (const frame of frames) {
+        if (!frame.startsWith("data: ")) continue;
+        const parsed = JSON.parse(frame.slice(6));
+        content += parsed.content;
+        onChunk(content);
+      }
+    }
+
+    return { toolExecutions: [], content };
   },
 
   createUserMessage(content: string): ChatMessage {

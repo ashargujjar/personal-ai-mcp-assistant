@@ -47,7 +47,13 @@ export async function createMemory(
     const { type, key, content, metadata, embedding } = req.body;
 
     const memory = await prisma.memory.create({
-      data: { userId: req.user.id, type, key, content, metadata },
+      data: {
+        userId: req.user.id,
+        type,
+        key,
+        content,
+        metadata: metadata === null ? Prisma.JsonNull : metadata,
+      },
     });
 
     if (embedding) {

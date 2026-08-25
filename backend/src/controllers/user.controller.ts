@@ -4,9 +4,12 @@ import { AppError } from "../middleware/errorHandler";
 
 export async function chatAssistant(req: Request, res: Response, next: NextFunction) {
   try {
-    const { chatText } = req.body;
+    const { chatText, threadId } = req.body;
     if (!chatText) {
       throw new AppError("chatText is required", 400);
+    }
+    if (!threadId) {
+      throw new AppError("threadId is required", 400);
     }
 
     const aiUrl = process.env.PYTHON_URL;
@@ -25,7 +28,7 @@ export async function chatAssistant(req: Request, res: Response, next: NextFunct
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ stream: true, message: chatText }),
+      body: JSON.stringify({ stream: true, message: chatText, threadId }),
     });
 
     if (!aiRes.ok || !aiRes.body) {

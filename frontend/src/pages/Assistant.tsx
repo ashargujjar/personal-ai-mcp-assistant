@@ -6,29 +6,15 @@ import { ChatInput } from "@/components/chat/ChatInput";
 import { MessageBubble } from "@/components/chat/MessageBubble";
 import { QuickActionsGrid } from "@/components/chat/QuickActionsGrid";
 import { assistantService } from "@/services/assistantService";
-import type { ChatMessage, ToolExecution } from "@/types";
-
-function revealContent(
-  fullText: string,
-  onTick: (partial: string) => void,
-  onDone: () => void
-) {
-  const words = fullText.split(" ");
-  let index = 0;
-  const interval = setInterval(() => {
-    index += 2;
-    onTick(words.slice(0, index).join(" "));
-    if (index >= words.length) {
-      clearInterval(interval);
-      onDone();
-    }
-  }, 35);
-}
+import { useAuth } from "@/hooks/useAuth";
+import type { ChatMessage } from "@/types";
 
 export default function Assistant() {
+  const { token } = useAuth();
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
   const [isBusy, setIsBusy] = React.useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
+  const [threadId, setThreadId] = React.useState(() => crypto.randomUUID());
   const scrollRef = React.useRef<HTMLDivElement>(null);
 
   const { data: quickActions } = useQuery({
@@ -39,6 +25,7 @@ export default function Assistant() {
   React.useEffect(() => {
     if (searchParams.get("new")) {
       setMessages([]);
+      setThreadId(crypto.randomUUID());
       setSearchParams({}, { replace: true });
     }
   }, [searchParams, setSearchParams]);
@@ -66,20 +53,12 @@ export default function Assistant() {
       setMessages((prev) => prev.map((m) => (m.id === assistantMessageId ? { ...m, ...patch } : m)));
     };
 
-    const handleToolUpdate = (executions: ToolExecution[]) => {
-      updateAssistantMessage({ toolExecutions: executions });
-    };
+    await assistantService.sendMessage(prompt, threadId, token, (partial) => {
+      updateAssistantMessage({ content: partial, isStreaming: true });
+    });
 
-    const result = await assistantService.sendMessage(prompt, handleToolUpdate);
-
-    revealContent(
-      result.content,
-      (partial) => updateAssistantMessage({ content: partial, isStreaming: true }),
-      () => {
-        updateAssistantMessage({ content: result.content, isStreaming: false, sources: result.sources });
-        setIsBusy(false);
-      }
-    );
+    updateAssistantMessage({ isStreaming: false });
+    setIsBusy(false);
   }
 
   function handleRegenerate(id: string) {

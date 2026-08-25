@@ -4,3 +4,6 @@ PyJWT
 python-dotenv
 mcp
 langchain-mcp-adapters
+langchain
+langchain_deepseek
+langgraph
