@@ -26,7 +26,8 @@ export const assistantService = {
     prompt: string,
     threadId: string,
     token: string | null,
-    onChunk: (partial: string) => void
+    onChunk: (partial: string) => void,
+    onToolUpdate: (executions: ToolExecution[]) => void
   ): Promise<SendMessageResult> {
     const res = await fetch(`${API_URL}/chat`, {
       method: "POST",
@@ -46,6 +47,8 @@ export const assistantService = {
     const decoder = new TextDecoder();
     let buffer = "";
     let content = "";
+    const toolExecutions: ToolExecution[] = [];
+    let toolCounter = 0;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -58,12 +61,31 @@ export const assistantService = {
       for (const frame of frames) {
         if (!frame.startsWith("data: ")) continue;
         const parsed = JSON.parse(frame.slice(6));
-        content += parsed.content;
-        onChunk(content);
+
+        if (parsed.type === "content") {
+          content += parsed.content;
+          onChunk(content);
+        } else if (parsed.type === "tool_call") {
+          if (parsed.status === "running") {
+            toolCounter += 1;
+            toolExecutions.push({
+              id: `tool-${Date.now()}-${toolCounter}`,
+              label: parsed.tool,
+              toolName: parsed.tool,
+              status: "running",
+            });
+          } else if (parsed.status === "done") {
+            const entry = [...toolExecutions]
+              .reverse()
+              .find((t) => t.toolName === parsed.tool && t.status === "running");
+            if (entry) entry.status = "completed";
+          }
+          onToolUpdate([...toolExecutions]);
+        }
       }
     }
 
-    return { toolExecutions: [], content };
+    return { toolExecutions, content };
   },
 
   createUserMessage(content: string): ChatMessage {

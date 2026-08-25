@@ -53,9 +53,13 @@ export default function Assistant() {
       setMessages((prev) => prev.map((m) => (m.id === assistantMessageId ? { ...m, ...patch } : m)));
     };
 
-    await assistantService.sendMessage(prompt, threadId, token, (partial) => {
-      updateAssistantMessage({ content: partial, isStreaming: true });
-    });
+    await assistantService.sendMessage(
+      prompt,
+      threadId,
+      token,
+      (partial) => updateAssistantMessage({ content: partial, isStreaming: true }),
+      (executions) => updateAssistantMessage({ toolExecutions: executions })
+    );
 
     updateAssistantMessage({ isStreaming: false });
     setIsBusy(false);
