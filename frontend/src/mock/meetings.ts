@@ -1,0 +1,61 @@
+import type { Meeting } from "@/types";
+
+export const meetings: Meeting[] = [
+  {
+    id: "meeting-1",
+    title: "Bright Client — Project Sync",
+    date: "2026-08-22T11:30:00",
+    durationMinutes: 45,
+    participants: ["Ashar", "Maria Alvarez"],
+    summary: "Reviewed auth flow rollout timeline and how MCP tool permission prompts should surface to end users.",
+    keyDecisions: ["Ship PR #201 before Friday's rollout", "Show tool approval prompts per-action, not batched"],
+    actionItems: [
+      { id: "ai-1", text: "Reply to Maria with confirmed timeline", assignee: "Ashar", done: false },
+      { id: "ai-2", text: "Finalize refresh token rollout plan", assignee: "Ashar", done: false },
+    ],
+    followUps: ["Schedule staging demo before rollout"],
+    relatedEmailIds: ["email-1"],
+    relatedDocumentIds: ["doc-2"],
+    transcript: [
+      { speaker: "Maria Alvarez", timestamp: "00:00", text: "Can we confirm the Friday deadline still works given the concurrency fix in review?" },
+      { speaker: "Ashar", timestamp: "00:12", text: "Yes — PR #201 addresses the race condition, should merge tomorrow." },
+      { speaker: "Maria Alvarez", timestamp: "00:40", text: "Great. One more thing — how will tool approval prompts work for end users?" },
+      { speaker: "Ashar", timestamp: "00:55", text: "We'll show them per-action rather than batching, so it's clear what's being approved." },
+    ],
+  },
+  {
+    id: "meeting-2",
+    title: "Q3 Roadmap Planning",
+    date: "2026-08-22T16:00:00",
+    durationMinutes: 60,
+    participants: ["Ashar", "Sam Okafor", "Priya Nair", "Daniel Cho", "Lena Fischer"],
+    summary: "Locked in Q3 themes: agent reliability, MCP tool marketplace, cost optimization.",
+    keyDecisions: ["MCP tool marketplace ships org-internal first", "Target 99.5% reliability SLA for agent tool calls"],
+    actionItems: [
+      { id: "ai-3", text: "Review Q3 roadmap draft", assignee: "Ashar", done: false },
+      { id: "ai-4", text: "Publish cost-per-session benchmark", assignee: "Sam Okafor", done: false },
+    ],
+    followUps: [],
+    relatedEmailIds: [],
+    relatedDocumentIds: ["doc-1"],
+    transcript: [
+      { speaker: "Sam Okafor", timestamp: "00:00", text: "Let's lock in the three themes for Q3: agent reliability, tool marketplace, cost." },
+      { speaker: "Priya Nair", timestamp: "00:20", text: "What's the target reliability SLA for agent tool calls?" },
+      { speaker: "Sam Okafor", timestamp: "00:35", text: "Proposing 99.5% — we can revisit after the first month of data." },
+    ],
+  },
+  {
+    id: "meeting-3",
+    title: "Sprint Retro",
+    date: "2026-08-21T15:00:00",
+    durationMinutes: 45,
+    participants: ["Ashar", "Priya Nair", "Daniel Cho", "Sam Okafor"],
+    summary: "Team flagged embeddings service instability; resolved same day. Good velocity on auth-service fixes.",
+    keyDecisions: ["Add connection pool alerting for embeddings service"],
+    actionItems: [{ id: "ai-5", text: "Set up pgvector index alerting", assignee: "Priya Nair", done: true }],
+    followUps: [],
+    relatedEmailIds: [],
+    relatedDocumentIds: [],
+    transcript: [],
+  },
+];

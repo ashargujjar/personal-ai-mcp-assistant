@@ -1,0 +1,6 @@
+fastmcp>=2.0.0
+uvicorn
+langchain_core
+langchain_openai
+python-dotenv
+httpx
