@@ -6,9 +6,12 @@ from typing import Annotated,Literal,List,Optional
 from pydantic import BaseModel,Field
 from langchain.tools import tool
 from langgraph.prebuilt import ToolNode, tools_condition
+from prompts.prompts import gmail_system_message,system_message
+from tools.tools import draft_email
 class State(BaseModel):
     messages: Annotated[list[AnyMessage], add_messages]
     routed_to: Optional[Literal["gmail", "github"]] = None
+    gmail_next_agent: Optional[Literal["drafterAgent","gmail"]]
 from langgraph.checkpoint.memory import MemorySaver
 
 # tools all bind to supervisor for memory
@@ -19,36 +22,12 @@ llm=ChatDeepSeek(
 )
 checkpointer = MemorySaver()
 
-system_message=SystemMessage(content=(
-   "You are a supervisor that manages two specialist agents (gmail, github) and the user's long-term memory. "
-   "You have four tools:\n"
-   "- get_memory(query, limit=4): search long-term memory for facts relevant to a query, returning the "
-   "most similar stored memories along with their memory id. Always search before answering questions "
-   "about the user's preferences or past statements, and before calling add_memory, so you don't save "
-   "duplicate facts.\n"
-   "- add_memory(content, type, key=None, metadata=None): save a new fact to long-term memory. There is "
-   "no automatic overwrite — if the user contradicts something already stored (e.g. first says they love "
-   "JavaScript, later says they only like Python), just add the new fact as a separate memory; do not try "
-   "to edit the old one.\n"
-   "- delete_memory(memory_id): remove a saved fact when the user asks you to forget something. You must "
-   "call get_memory first to find the memory id, then pass that id here — you cannot delete by name or key.\n"
-   "- route(agent): hand off to 'gmail' or 'github' when the request needs that specialist. "
-   "Do not call route for general questions or conversation — answer those directly with plain text instead.\n\n"
-   "After a specialist agent responds, check whether the user's request was fully completed. "
-   "If not, call route again for that same agent. If it is complete, reply to the user directly "
-   "with the relevant result — do not call route again.\n\n"
-   "Personalize your answers using what you know about the user when it's relevant."
-))
+
 
 @tool
 def route(agent: Literal["gmail", "github"]) -> str:
     """Hand off the conversation to the given specialist agent."""
     return agent
-
-def gmail(state:State):
-  return{
-         "messages":"all user operations have done succesfully",
-        }
 
 def github(state:State):
    return {
@@ -69,25 +48,38 @@ def build_graph(mcp_tools: list):
     the tools carry a reference to that connection, so this needs to be called fresh for
     every request, not once at import time.
     """
-    tools = [*mcp_tools, route]
-    llm_with_tools = llm.bind_tools(tools)
+    GMAIL_TOOL_NAMES = {"list_emails", "get_email", "send_email", "delete_email"}
+    gmail_tools = [t for t in mcp_tools if t.name in GMAIL_TOOL_NAMES]+[draft_email]
+    supervisor_tools = [t for t in mcp_tools if t.name not in GMAIL_TOOL_NAMES] + [route]
+
+    llm_with_tools = llm.bind_tools(supervisor_tools)       # supervisor never sees gmail tools
+    gmail_llm = llm.bind_tools(gmail_tools)
 
     def supervisor(state: State):
         response = llm_with_tools.invoke([system_message, *state.messages])
         return {"messages": [response], "routed_to": None}
 
+    def gmail(state: State):
+        response = gmail_llm.invoke([gmail_system_message, *state.messages])
+        return {"messages": [response]}
+
+
+
+
+
+
     builder = StateGraph(State)
     builder.add_node("supervisor", supervisor)
     builder.add_node("gmail", gmail)
     builder.add_node("github", github)
-    builder.add_node("tools", ToolNode(tools))
-
+    builder.add_node("supervisor_tools", ToolNode(supervisor_tools))
+    builder.add_node("gmail_tools",ToolNode(gmail_tools))
     builder.add_edge(START, "supervisor")
-    builder.add_conditional_edges("supervisor", tools_condition)
+    builder.add_conditional_edges("supervisor", tools_condition,{"tools":"supervisor_tools",END:END})
     builder.add_conditional_edges(
-        "tools", after_tools, {"gmail": "gmail", "github": "github", "supervisor": "supervisor"}
+        "supervisor_tools", after_tools, {"gmail": "gmail", "github": "github", "supervisor": "supervisor"}
     )
-
-    builder.add_edge("gmail", "supervisor")
+    builder.add_conditional_edges("gmail", tools_condition, {"tools": "gmail_tools", END: "supervisor"})
+    builder.add_edge("gmail_tools", "gmail")
     builder.add_edge("github", "supervisor")
     return builder.compile(checkpointer=checkpointer)
