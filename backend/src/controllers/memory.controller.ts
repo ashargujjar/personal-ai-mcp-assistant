@@ -7,7 +7,7 @@ import type {
   SearchMemoryInput,
   UpdateMemoryInput,
 } from "../schema/memory.schema";
-
+import type { Prisma as PrismaTypes } from "@prisma/client";
 type MemorySearchRow = {
   id: string;
   type: string;
@@ -37,7 +37,7 @@ async function findOwnedMemory(id: string, userId: string) {
 export async function createMemory(
   req: Request<unknown, unknown, CreateMemoryInput>,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) {
   try {
     if (!req.user) {
@@ -60,7 +60,9 @@ export async function createMemory(
       await setEmbedding(memory.id, embedding);
     }
 
-    res.status(201).json({ data: { ...memory, hasEmbedding: Boolean(embedding) } });
+    res
+      .status(201)
+      .json({ data: { ...memory, hasEmbedding: Boolean(embedding) } });
   } catch (err) {
     next(err);
   }
@@ -69,7 +71,7 @@ export async function createMemory(
 export async function updateMemory(
   req: Request<{ id: string }, unknown, UpdateMemoryInput>,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) {
   try {
     if (!req.user) {
@@ -104,7 +106,7 @@ export async function updateMemory(
 export async function deleteMemory(
   req: Request<{ id: string }>,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) {
   try {
     if (!req.user) {
@@ -122,10 +124,53 @@ export async function deleteMemory(
   }
 }
 
+export async function listMemory(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    if (!req.user) {
+      throw new AppError("Authentication required", 401);
+    }
+
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
+    const q = typeof req.query.q === "string" && req.query.q.trim() ? req.query.q.trim() : undefined;
+
+    const where: PrismaTypes.MemoryWhereInput = {
+      userId: req.user.id,
+      ...(q ? { content: { contains: q, mode: "insensitive" } } : {}),
+    };
+
+    const [rows, total] = await Promise.all([
+      prisma.memory.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.memory.count({ where }),
+    ]);
+
+    res.json({
+      data: rows,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function searchMemory(
   req: Request<unknown, unknown, SearchMemoryInput>,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ) {
   try {
     if (!req.user) {

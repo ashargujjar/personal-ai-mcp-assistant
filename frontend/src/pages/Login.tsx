@@ -1,3 +1,4 @@
+import { GoogleLogin } from "@react-oauth/google";
 import * as React from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -7,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/useAuth";
 
 export default function Login() {
-  const { login } = useAuth();
+  const { login, loginWithGoogle } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
@@ -25,6 +26,17 @@ export default function Login() {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleGoogleSuccess(credential?: string) {
+    if (!credential) return;
+    setError(null);
+    try {
+      await loginWithGoogle(credential);
+      navigate("/", { replace: true });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Google sign-in failed");
     }
   }
 
@@ -63,6 +75,17 @@ export default function Login() {
               {isSubmitting ? "Logging in..." : "Log in"}
             </Button>
           </form>
+          <div className="my-4 flex items-center gap-3">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-xs text-muted-foreground">OR</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+          <div className="flex justify-center">
+            <GoogleLogin
+              onSuccess={(response) => handleGoogleSuccess(response.credential)}
+              onError={() => setError("Google sign-in failed")}
+            />
+          </div>
           <p className="mt-4 text-center text-sm text-muted-foreground">
             Don't have an account?{" "}
             <Link to="/signup" className="text-primary underline underline-offset-2">

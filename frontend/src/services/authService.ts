@@ -27,4 +27,7 @@ export const authService = {
   login(input: LoginInput): Promise<AuthResponse> {
     return request<AuthResponse>("/auth/login", input);
   },
+  googleLogin(idToken: string): Promise<AuthResponse> {
+    return request<AuthResponse>("/auth/google", { idToken });
+  },
 };

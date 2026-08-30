@@ -1,29 +1,51 @@
-import { memories as seedMemories } from "@/mock/memory";
-import { sleep } from "@/lib/utils";
-import type { Memory, MemoryCategory } from "@/types";
+import type { Memory, MemoryListResult } from "@/types";
 
-let memories: Memory[] = [...seedMemories];
-let counter = memories.length;
+const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000/api";
+
+function authHeaders(token: string | null): HeadersInit {
+  return {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
+async function parseResponse<T>(res: Response): Promise<T> {
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(json?.message ?? "Something went wrong");
+  }
+  return json as T;
+}
 
 export const memoryService = {
-  async list(query?: string): Promise<Memory[]> {
-    await sleep(200);
-    const sorted = [...memories].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
-    if (!query?.trim()) return sorted;
-    const q = query.toLowerCase();
-    return sorted.filter((m) => m.content.toLowerCase().includes(q) || m.category.includes(q));
+  async list(token: string | null, page: number, limit: number, query?: string): Promise<MemoryListResult> {
+    const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+    if (query?.trim()) params.set("q", query.trim());
+
+    const res = await fetch(`${API_URL}/memory?${params.toString()}`, {
+      headers: authHeaders(token),
+    });
+    return parseResponse<MemoryListResult>(res);
   },
 
-  async create(content: string, category: MemoryCategory = "fact"): Promise<Memory> {
-    await sleep(250);
-    counter += 1;
-    const memory: Memory = { id: `mem-new-${counter}`, content, category, source: "Manual", createdAt: new Date().toISOString() };
-    memories = [memory, ...memories];
-    return memory;
+  async create(token: string | null, content: string): Promise<Memory> {
+    const res = await fetch(`${API_URL}/memory`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify({ type: "note", content }),
+    });
+    const json = await parseResponse<{ data: Memory }>(res);
+    return json.data;
   },
 
-  async remove(id: string): Promise<void> {
-    await sleep(200);
-    memories = memories.filter((m) => m.id !== id);
+  async remove(token: string | null, id: string): Promise<void> {
+    const res = await fetch(`${API_URL}/memory/${id}`, {
+      method: "DELETE",
+      headers: authHeaders(token),
+    });
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      throw new Error(json?.message ?? "Something went wrong");
+    }
   },
 };

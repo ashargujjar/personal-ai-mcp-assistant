@@ -1,12 +1,22 @@
 import type { ID } from "./common";
 
-export type MemoryCategory = "preference" | "fact" | "skill" | "relationship" | "project";
-
 export interface Memory {
   id: ID;
+  type: string;
+  key: string | null;
   content: string;
-  category: MemoryCategory;
-  source: string;
+  metadata: Record<string, unknown> | null;
   createdAt: string;
-  lastUsedAt?: string;
+}
+
+export interface MemoryPagination {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface MemoryListResult {
+  data: Memory[];
+  pagination: MemoryPagination;
 }

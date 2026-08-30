@@ -1,5 +1,7 @@
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, CreditCard, Key, RefreshCw } from "lucide-react";
 import * as React from "react";
+import { useSearchParams } from "react-router-dom";
 import { PermissionRow } from "@/components/settings/PermissionRow";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -11,10 +13,11 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
+import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/hooks/useTheme";
 import { cn } from "@/lib/utils";
-import { currentUser } from "@/mock/users";
+import { gmailService } from "@/services/gmailService";
 
 const sections = [
   "General",
@@ -33,6 +36,17 @@ type Section = (typeof sections)[number];
 
 export default function Settings() {
   const [active, setActive] = React.useState<Section>("General");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  React.useEffect(() => {
+    if (searchParams.get("gmail") === "connected") {
+      toast({ title: "Gmail connected" });
+      queryClient.invalidateQueries({ queryKey: ["gmail", "status"] });
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams, queryClient, toast]);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-4 sm:p-6">
@@ -72,14 +86,15 @@ export default function Settings() {
 }
 
 function GeneralSection() {
+  const { user } = useAuth();
   return (
     <Card>
       <CardHeader>
         <CardTitle>General</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <Field label="Name" defaultValue={currentUser.name} />
-        <Field label="Email" defaultValue={currentUser.email} />
+        <Field label="Name" defaultValue={user?.name ?? ""} />
+        <Field label="Email" defaultValue={user?.email ?? ""} />
         <div className="space-y-1.5">
           <Label>Timezone</Label>
           <Select defaultValue="pst">
@@ -250,6 +265,24 @@ function PrivacySection() {
 }
 
 function ToolPermissionsSection() {
+  const { token } = useAuth();
+  const { toast } = useToast();
+
+  const status = useQuery({
+    queryKey: ["gmail", "status"],
+    queryFn: () => gmailService.getStatus(token),
+    enabled: Boolean(token),
+  });
+
+  async function handleConnectGmail() {
+    try {
+      const url = await gmailService.getConnectUrl(token);
+      window.location.href = url;
+    } catch (err) {
+      toast({ title: err instanceof Error ? err.message : "Failed to start Gmail connection" });
+    }
+  }
+
   return (
     <div className="space-y-4">
       <Card>
@@ -265,8 +298,15 @@ function ToolPermissionsSection() {
         </CardContent>
       </Card>
       <Card>
-        <CardHeader>
+        <CardHeader className="flex-row items-center justify-between space-y-0">
           <CardTitle>Gmail</CardTitle>
+          {status.data?.connected ? (
+            <Badge variant="success">Connected</Badge>
+          ) : (
+            <Button size="sm" onClick={handleConnectGmail} disabled={status.isLoading}>
+              Connect Gmail
+            </Button>
+          )}
         </CardHeader>
         <CardContent className="divide-y divide-border">
           <PermissionRow label="Read emails" level="allowed" />

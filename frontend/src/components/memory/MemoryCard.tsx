@@ -3,15 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { formatRelativeTime } from "@/lib/utils";
-import type { Memory, MemoryCategory } from "@/types";
-
-const categoryVariant: Record<MemoryCategory, "default" | "secondary" | "success" | "warning" | "muted"> = {
-  preference: "default",
-  fact: "secondary",
-  skill: "success",
-  relationship: "warning",
-  project: "muted",
-};
+import type { Memory } from "@/types";
 
 export function MemoryCard({ memory, onDelete }: { memory: Memory; onDelete: (id: string) => void }) {
   return (
@@ -29,9 +21,13 @@ export function MemoryCard({ memory, onDelete }: { memory: Memory; onDelete: (id
         </Button>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-        <Badge variant={categoryVariant[memory.category]}>{memory.category}</Badge>
-        <span>·</span>
-        <span>{memory.source}</span>
+        <Badge variant="secondary">{memory.type}</Badge>
+        {memory.key && (
+          <>
+            <span>·</span>
+            <span>{memory.key}</span>
+          </>
+        )}
         <span>·</span>
         <span>{formatRelativeTime(memory.createdAt)}</span>
       </div>

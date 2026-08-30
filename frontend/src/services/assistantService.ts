@@ -47,6 +47,7 @@ export const assistantService = {
     const decoder = new TextDecoder();
     let buffer = "";
     let content = "";
+    let needsSeparator = false;
     const toolExecutions: ToolExecution[] = [];
     let toolCounter = 0;
 
@@ -63,6 +64,13 @@ export const assistantService = {
         const parsed = JSON.parse(frame.slice(6));
 
         if (parsed.type === "content") {
+          // The agent can generate several separate replies in one turn (e.g. a line
+          // before calling a tool, then the final answer after) — insert a paragraph
+          // break between them instead of running the sentences together.
+          if (needsSeparator && content) {
+            content += "\n\n";
+            needsSeparator = false;
+          }
           content += parsed.content;
           onChunk(content);
         } else if (parsed.type === "tool_call") {
@@ -74,6 +82,7 @@ export const assistantService = {
               toolName: parsed.tool,
               status: "running",
             });
+            needsSeparator = true;
           } else if (parsed.status === "done") {
             const entry = [...toolExecutions]
               .reverse()

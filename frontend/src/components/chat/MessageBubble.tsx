@@ -6,8 +6,8 @@ import { SourceCards } from "./SourceCards";
 import { ToolActivityList } from "./ToolActivityList";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/useAuth";
 import { cn, initials } from "@/lib/utils";
-import { currentUser } from "@/mock/users";
 import type { ChatMessage } from "@/types";
 
 interface MessageBubbleProps {
@@ -17,6 +17,7 @@ interface MessageBubbleProps {
 }
 
 export function MessageBubble({ message, onRegenerate, onFeedback }: MessageBubbleProps) {
+  const { user } = useAuth();
   const [copied, setCopied] = React.useState(false);
   const isUser = message.role === "user";
 
@@ -33,7 +34,7 @@ export function MessageBubble({ message, onRegenerate, onFeedback }: MessageBubb
           {message.content}
         </div>
         <Avatar className="h-7 w-7 shrink-0">
-          <AvatarFallback>{initials(currentUser.name)}</AvatarFallback>
+          <AvatarFallback>{initials(user?.name ?? "?")}</AvatarFallback>
         </Avatar>
       </div>
     );

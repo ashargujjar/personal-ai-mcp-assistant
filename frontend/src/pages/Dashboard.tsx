@@ -6,7 +6,7 @@ import { RecentActivityFeed } from "@/components/dashboard/RecentActivityFeed";
 import { ScheduleTimeline } from "@/components/dashboard/ScheduleTimeline";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { StatCard } from "@/components/shared/StatCard";
-import { currentUser } from "@/mock/users";
+import { useAuth } from "@/hooks/useAuth";
 import { dashboardService } from "@/services/dashboardService";
 
 function greeting() {
@@ -17,6 +17,7 @@ function greeting() {
 }
 
 export default function Dashboard() {
+  const { user } = useAuth();
   const stats = useQuery({ queryKey: ["dashboard", "stats"], queryFn: dashboardService.getStats });
   const briefing = useQuery({ queryKey: ["dashboard", "briefing"], queryFn: dashboardService.getBriefing });
   const schedule = useQuery({ queryKey: ["dashboard", "schedule"], queryFn: dashboardService.getTodaySchedule });
@@ -25,7 +26,7 @@ export default function Dashboard() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 p-4 sm:p-6">
-      <PageHeader title={`${greeting()}, ${currentUser.name}`} subtitle="Here's what's happening across your digital workspace." />
+      <PageHeader title={`${greeting()}, ${user?.name ?? "there"}`} subtitle="Here's what's happening across your digital workspace." />
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Unread Emails" value={stats.data?.unreadEmails ?? "—"} icon={Mail} accent="default" />

@@ -6,12 +6,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { StatusDot } from "@/components/shared/StatusDot";
+import { useAuth } from "@/hooks/useAuth";
 import { useCommandPalette } from "@/hooks/useCommandPalette";
 import { useSidebarBadges } from "@/hooks/useSidebarBadges";
 import { cn, initials } from "@/lib/utils";
-import { currentUser } from "@/mock/users";
 
 export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
+  const { user } = useAuth();
   const { setOpen } = useCommandPalette();
   const badges = useSidebarBadges();
   const navigate = useNavigate();
@@ -101,13 +102,13 @@ export function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       <div className="flex items-center gap-2.5 p-3">
         <div className="relative">
           <Avatar className="h-8 w-8">
-            <AvatarFallback>{initials(currentUser.name)}</AvatarFallback>
+            <AvatarFallback>{initials(user?.name ?? "?")}</AvatarFallback>
           </Avatar>
           <StatusDot status="connected" className="absolute -bottom-0.5 -right-0.5 ring-2 ring-sidebar" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">{currentUser.name}</p>
-          <p className="truncate text-xs text-sidebar-foreground/50">{currentUser.role}</p>
+          <p className="truncate text-sm font-medium">{user?.name ?? "Guest"}</p>
+          <p className="truncate text-xs text-sidebar-foreground/50">{user?.email ?? ""}</p>
         </div>
         <NavLink
           to="/settings"
