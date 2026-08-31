@@ -46,15 +46,31 @@ export async function createMemory(
 
     const { type, key, content, metadata, embedding } = req.body;
 
-    const memory = await prisma.memory.create({
-      data: {
-        userId: req.user.id,
-        type,
-        key,
-        content,
-        metadata: metadata === null ? Prisma.JsonNull : metadata,
-      },
-    });
+    const memory = key
+      ? await prisma.memory.upsert({
+          where: { userId_key_unique: { userId: req.user.id, key } },
+          create: {
+            userId: req.user.id,
+            type,
+            key,
+            content,
+            metadata: metadata === null ? Prisma.JsonNull : metadata,
+          },
+          update: {
+            type,
+            content,
+            metadata: metadata === null ? Prisma.JsonNull : metadata,
+          },
+        })
+      : await prisma.memory.create({
+          data: {
+            userId: req.user.id,
+            type,
+            key: null,
+            content,
+            metadata: metadata === null ? Prisma.JsonNull : metadata,
+          },
+        });
 
     if (embedding) {
       await setEmbedding(memory.id, embedding);
@@ -136,7 +152,10 @@ export async function listMemory(
 
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
-    const q = typeof req.query.q === "string" && req.query.q.trim() ? req.query.q.trim() : undefined;
+    const q =
+      typeof req.query.q === "string" && req.query.q.trim()
+        ? req.query.q.trim()
+        : undefined;
 
     const where: PrismaTypes.MemoryWhereInput = {
       userId: req.user.id,
@@ -199,6 +218,25 @@ export async function searchMemory(
         `;
 
     res.json({ data: rows });
+  } catch (err) {
+    next(err);
+  }
+}
+export async function getMemoryByKey(
+  req: Request<{ key: string }>,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    if (!req.user) {
+      throw new AppError("Authentication required", 401);
+    }
+    const memory = await prisma.memory.findUnique({
+      where: {
+        userId_key_unique: { userId: req.user.id, key: req.params.key },
+      },
+    });
+    res.json({ data: memory });
   } catch (err) {
     next(err);
   }

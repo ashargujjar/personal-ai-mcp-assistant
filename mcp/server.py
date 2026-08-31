@@ -59,6 +59,18 @@ async def get_memory(query: str, limit: int = 4) -> str:
 
 
 @mcp.tool()
+async def get_memory_by_key(key: str) -> str:
+    """Get the current value of a known fact slot (e.g. 'favorite_language', 'job_title') by its exact key.
+    Use this instead of get_memory when you already know the slot name and want the single current value."""
+    jwt = _get_jwt()
+    result = await _request("GET", f"/memory/key/{key}", jwt)
+    memory = result["data"]
+    if not memory:
+        return f"No memory found for key '{key}'."
+    return memory["content"]
+
+
+@mcp.tool()
 async def delete_memory(memory_id: str) -> str:
     """Delete a previously saved fact from long-term memory by its memory id (from get_memory results)."""
     jwt = _get_jwt()

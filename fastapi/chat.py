@@ -8,12 +8,12 @@ from langchain.tools import tool
 from langgraph.prebuilt import ToolNode, tools_condition
 from prompts.prompts import gmail_system_message,system_message
 from tools.tools import draft_email
+from langgraph.checkpoint.memory import MemorySaver
+
 class State(BaseModel):
     messages: Annotated[list[AnyMessage], add_messages]
     routed_to: Optional[Literal["gmail", "github"]] = None
-    gmail_next_agent: Optional[Literal["drafterAgent","gmail"]]
-from langgraph.checkpoint.memory import MemorySaver
-
+ 
 # tools all bind to supervisor for memory
 llm=ChatDeepSeek(
    model= "deepseek-chat",

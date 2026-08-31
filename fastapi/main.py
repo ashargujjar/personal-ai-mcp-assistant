@@ -54,7 +54,7 @@ async def chat(payload: ChatRequest, jwt_token: str = Depends(verify_jwt)):
                                     }
                                     yield f"data: {json.dumps(payload_json)}\n\n"
 
-                        elif node_name == "tools":
+                        elif node_name in ("supervisor_tools", "gmail_tools"):
                             for msg in node_output.get("messages", []):
                                 tool_name = getattr(msg, "name", None)
                                 if not tool_name or tool_name == "route":
