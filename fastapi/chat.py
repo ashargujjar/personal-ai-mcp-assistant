@@ -1,5 +1,5 @@
 import os
-from langchain.messages import AIMessage,HumanMessage,SystemMessage,AnyMessage
+from langchain.messages import AIMessage,HumanMessage,SystemMessage,AnyMessage,RemoveMessage
 from langgraph.graph import add_messages,StateGraph,START,END
 from langchain_deepseek import ChatDeepSeek
 from typing import Annotated,Literal,List,Optional
@@ -13,6 +13,7 @@ from langgraph.checkpoint.memory import MemorySaver
 class State(BaseModel):
     messages: Annotated[list[AnyMessage], add_messages]
     routed_to: Optional[Literal["gmail", "github"]] = None
+    summary:str =""
  
 # tools all bind to supervisor for memory
 llm=ChatDeepSeek(
@@ -22,6 +23,10 @@ llm=ChatDeepSeek(
 )
 checkpointer = MemorySaver()
 
+MAX_MESSAGES_BEFORE_SUMMARY = 20
+KEEP_LAST_N_RAW = 6
+def should_summarize(state: State) -> bool:
+    return len(state.messages) > MAX_MESSAGES_BEFORE_SUMMARY
 
 
 @tool
@@ -54,32 +59,73 @@ def build_graph(mcp_tools: list):
 
     llm_with_tools = llm.bind_tools(supervisor_tools)       # supervisor never sees gmail tools
     gmail_llm = llm.bind_tools(gmail_tools)
-
     def supervisor(state: State):
-        response = llm_with_tools.invoke([system_message, *state.messages])
+        context = [system_message]
+        if state.summary:
+            context.append(SystemMessage(content=f"Summary of earlier conversation: {state.summary}"))
+        context += state.messages
+        response = llm_with_tools.invoke(context)
         return {"messages": [response], "routed_to": None}
 
     def gmail(state: State):
-        response = gmail_llm.invoke([gmail_system_message, *state.messages])
+        context = [gmail_system_message]
+        if state.summary:
+            context.append(SystemMessage(content=f"Summary of earlier conversation: {state.summary}"))
+        context += state.messages
+        response = gmail_llm.invoke(context)
         return {"messages": [response]}
 
 
+    def summarize(state: State):
+        messages_to_drop = state.messages[:-KEEP_LAST_N_RAW]
+        if not messages_to_drop:
+            return {}
 
+        if state.summary:
+            prompt = (
+                f"This is the summary of the conversation so far: {state.summary}\n\n"
+                "Extend it with the new messages below. Keep it concise but preserve "
+                "key facts, decisions, and unresolved requests."
+            )
+        else:
+            prompt = (
+                "Summarize the conversation below concisely, preserving key facts, "
+                "decisions, and unresolved requests."
+            )
+
+        response = llm.invoke([SystemMessage(content=prompt), *messages_to_drop])
+
+        return {
+            "summary": response.content,
+            "messages": [RemoveMessage(id=m.id) for m in messages_to_drop],
+        }
+
+
+    def after_supervisor(state:State)->str:
+        condition_result =tools_condition(state)
+        if condition_result == "tools":
+            return "tools"
+        return "summarize" if should_summarize(state) else END
+
+ 
 
 
 
     builder = StateGraph(State)
     builder.add_node("supervisor", supervisor)
     builder.add_node("gmail", gmail)
+    builder.add_node("summarize",summarize)
     builder.add_node("github", github)
     builder.add_node("supervisor_tools", ToolNode(supervisor_tools))
     builder.add_node("gmail_tools",ToolNode(gmail_tools))
     builder.add_edge(START, "supervisor")
-    builder.add_conditional_edges("supervisor", tools_condition,{"tools":"supervisor_tools",END:END})
+    builder.add_conditional_edges("supervisor", after_supervisor, {"tools": "supervisor_tools", "summarize": "summarize", END: END})
     builder.add_conditional_edges(
         "supervisor_tools", after_tools, {"gmail": "gmail", "github": "github", "supervisor": "supervisor"}
     )
     builder.add_conditional_edges("gmail", tools_condition, {"tools": "gmail_tools", END: "supervisor"})
     builder.add_edge("gmail_tools", "gmail")
     builder.add_edge("github", "supervisor")
+    builder.add_edge("summarize", END)
+
     return builder.compile(checkpointer=checkpointer)
