@@ -23,6 +23,7 @@ class ChatRequest(BaseModel):
     threadId: str
     stream: bool = True
     resume: Optional[dict] = None
+    timezone: Optional[str] = None
 
 
 @app.get("/")
@@ -37,7 +38,7 @@ async def chat(payload: ChatRequest, jwt_token: str = Depends(verify_jwt)):
             graph_input = (
                 Command(resume=payload.resume)
                 if payload.resume
-                else {"messages": [HumanMessage(content=payload.message)]}
+                else {"messages": [HumanMessage(content=payload.message)], "timezone": payload.timezone}
             )
             try:
                 async for mode, data in graph.astream(
@@ -60,7 +61,7 @@ async def chat(payload: ChatRequest, jwt_token: str = Depends(verify_jwt)):
                             return
 
                         for node_name, node_output in data.items():
-                            if node_name == "supervisor":
+                            if node_name in ("supervisor", "calender"):
                                 for msg in node_output.get("messages", []):
                                     for tool_call in getattr(msg, "tool_calls", None) or []:
                                         if tool_call["name"] == "route":
@@ -72,7 +73,7 @@ async def chat(payload: ChatRequest, jwt_token: str = Depends(verify_jwt)):
                                         }
                                         yield f"data: {json.dumps(payload_json)}\n\n"
 
-                            elif node_name in ("supervisor_tools", "gmail_tools"):
+                            elif node_name in ("supervisor_tools", "gmail_tools", "calender_tools"):
                                 for msg in node_output.get("messages", []):
                                     tool_name = getattr(msg, "name", None)
                                     if not tool_name or tool_name == "route":

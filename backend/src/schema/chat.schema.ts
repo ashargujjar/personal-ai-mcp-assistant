@@ -9,6 +9,7 @@ export const chatSchema = z.object({
         .max(300, "chatText must be 4000 characters or fewer")
         .optional(),
       threadId: z.string().min(1, "threadId is required"),
+      timezone: z.string().optional(),
       resume: z
         .object({
           type: z.enum(["accept", "reject", "edit"]),

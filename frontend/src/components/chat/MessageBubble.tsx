@@ -1,4 +1,4 @@
-import { Check, Copy, RotateCcw, ThumbsDown, ThumbsUp } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Copy, RotateCcw, ThumbsDown, ThumbsUp } from "lucide-react";
 import * as React from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -16,6 +16,45 @@ interface MessageBubbleProps {
   onRegenerate?: (id: string) => void;
   onFeedback?: (id: string, feedback: "up" | "down") => void;
   onConfirmationDecide?: (messageId: string, decision: ConfirmationDecision) => void;
+}
+
+// The backend streams several separate replies into one `content` string, separated by blank
+// lines (e.g. "routing to calendar" narration, then the actual final answer). Only the last
+// block is the answer — the rest is process narration, collapsed by default once streaming ends.
+function AssistantResponse({ content }: { content: string }) {
+  const [expanded, setExpanded] = React.useState(false);
+  const blocks = content.split(/\n{2,}/).filter((b) => b.trim());
+  const final = blocks[blocks.length - 1] ?? content;
+  const steps = blocks.slice(0, -1);
+
+  return (
+    <div className="text-sm leading-relaxed">
+      {steps.length > 0 && (
+        <div className="mb-2">
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+          >
+            {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+            {expanded ? "Hide steps" : "Show steps"}
+          </button>
+          {expanded && (
+            <div className="markdown-body mt-1.5 space-y-1.5 border-l-2 border-border pl-2.5 text-muted-foreground">
+              {steps.map((step, i) => (
+                <ReactMarkdown key={i} remarkPlugins={[remarkGfm]}>
+                  {step}
+                </ReactMarkdown>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      <div className="markdown-body">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{final}</ReactMarkdown>
+      </div>
+    </div>
+  );
 }
 
 export function MessageBubble({ message, onRegenerate, onFeedback, onConfirmationDecide }: MessageBubbleProps) {
@@ -52,18 +91,22 @@ export function MessageBubble({ message, onRegenerate, onFeedback, onConfirmatio
           <ToolActivityList executions={message.toolExecutions} />
         )}
 
-        {message.content && (
+        {(message.content || message.isStreaming) && (
           <div className="rounded-2xl rounded-tl-sm border border-border bg-card px-4 py-3">
             {message.isStreaming ? (
-              <span className="inline-flex gap-1">
-                <span className="h-1.5 w-1.5 animate-pulse-dot rounded-full bg-muted-foreground [animation-delay:0ms]" />
-                <span className="h-1.5 w-1.5 animate-pulse-dot rounded-full bg-muted-foreground [animation-delay:150ms]" />
-                <span className="h-1.5 w-1.5 animate-pulse-dot rounded-full bg-muted-foreground [animation-delay:300ms]" />
-              </span>
+              message.content ? (
+                <div className="markdown-body text-sm leading-relaxed text-muted-foreground">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+                </div>
+              ) : (
+                <span className="inline-flex gap-1">
+                  <span className="h-1.5 w-1.5 animate-pulse-dot rounded-full bg-muted-foreground [animation-delay:0ms]" />
+                  <span className="h-1.5 w-1.5 animate-pulse-dot rounded-full bg-muted-foreground [animation-delay:150ms]" />
+                  <span className="h-1.5 w-1.5 animate-pulse-dot rounded-full bg-muted-foreground [animation-delay:300ms]" />
+                </span>
+              )
             ) : (
-              <div className="markdown-body text-sm leading-relaxed">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
-              </div>
+              <AssistantResponse content={message.content} />
             )}
           </div>
         )}

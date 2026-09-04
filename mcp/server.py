@@ -31,7 +31,11 @@ def _get_jwt() -> str:
 async def _request(method: str, path: str, jwt: str, json: Optional[dict] = None) -> dict:
     async with httpx.AsyncClient(base_url=NODE_URL, headers={"Authorization": f"Bearer {jwt}"}) as client:
         response = await client.request(method, path, json=json)
-        response.raise_for_status()
+        if response.is_error:
+            raise httpx.HTTPStatusError(
+                f"{response.status_code} for {method} {path}: {response.text}",
+                request=response.request, response=response,
+            )
         return response.json() if response.content else {}
 
 
@@ -180,10 +184,12 @@ async def create_event(title: str, start: str, end: str, description: Optional[s
     """Create a Calendar event. `start` and `end` must be ISO 8601 datetimes (e.g. '2026-09-05T14:00:00-07:00').
     `attendees` is an optional list of email addresses."""
     jwt = _get_jwt()
-    result = await _request(
-        "POST", "/calendar/events", jwt,
-        {"title": title, "description": description, "start": start, "end": end, "attendees": attendees},
-    )
+    payload = {"title": title, "start": start, "end": end}
+    if description is not None:
+        payload["description"] = description
+    if attendees is not None:
+        payload["attendees"] = attendees
+    result = await _request("POST", "/calendar/events", jwt, payload)
     return f"Event created (id: {result['data']['id']})."
 
 

@@ -114,7 +114,8 @@ export const assistantService = {
     onChunk: (partial: string) => void,
     onToolUpdate: (executions: ToolExecution[]) => void
   ): Promise<SendMessageResult> {
-    return streamChat({ chatText: prompt, threadId }, token, onChunk, onToolUpdate);
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return streamChat({ chatText: prompt, threadId, timezone }, token, onChunk, onToolUpdate);
   },
 
   async resumeChat(
