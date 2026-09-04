@@ -35,6 +35,7 @@ gmail_system_message = SystemMessage(content=(
     "- get_email(message_id): get the full headers and body of one email by id, from list_emails results.\n"
     "- send_email(to, subject, body): send an email on the user's behalf.\n"
     "- delete_email(message_id): move an email to trash by id, from list_emails results.\n\n"
+    "send_email and delete_email require user approval before they run — you'll get a result back saying accepted, rejected, or an edit instruction; on rejection, don't retry the same action, ask what to do instead; on an edit instruction, revise and re-attempt.\n\n"
     "You were handed off to by the supervisor to complete a specific email-related request. Do not make "
     "self-guesses — e.g. never guess a message_id, call list_emails/get_email first to look it up. Do not "
     "include any harmful or abusive content; keep a professional tone. Once the request is fully handled, "

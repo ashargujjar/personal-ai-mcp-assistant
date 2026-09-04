@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   connectGmail,
   deleteMessage,
+  disconnectGmail,
   getMessage,
   gmailCallback,
   gmailStatus,
@@ -21,6 +22,7 @@ router.get("/callback", gmailCallback);
 router.use(requireAuth);
 router.get("/status", gmailStatus);
 router.get("/connect", connectGmail);
+router.delete("/disconnect", disconnectGmail);
 router.get("/messages", listMessages);
 router.get("/messages/:id", validate(messageIdParamSchema), getMessage);
 router.post("/send", validate(sendMessageSchema), sendMessage);

@@ -9,7 +9,7 @@ const allItems = navGroups.flatMap((g) => g.items);
 
 function useCurrentPageLabel() {
   const location = useLocation();
-  if (location.pathname === "/") return "Dashboard";
+  if (location.pathname === "/") return "Assistant";
   const match = allItems.find((item) => item.path !== "/" && location.pathname.startsWith(item.path));
   return match?.label ?? "NEXUS AI";
 }

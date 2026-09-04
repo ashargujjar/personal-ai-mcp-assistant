@@ -2,11 +2,9 @@ import {
   Calendar,
   FileText,
   Github,
-  Mail,
   MessageSquare,
   NotebookText,
   Search,
-  Sparkles,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -19,10 +17,8 @@ import { searchService } from "@/services/searchService";
 import type { SearchResultItem } from "@/types";
 
 const typeIcons: Record<SearchResultItem["type"], LucideIcon> = {
-  email: Mail,
   github: Github,
   document: FileText,
-  memory: Sparkles,
   note: NotebookText,
   task: MessageSquare,
   meeting: Users,
@@ -30,10 +26,8 @@ const typeIcons: Record<SearchResultItem["type"], LucideIcon> = {
 };
 
 const typeLabels: Record<SearchResultItem["type"], string> = {
-  email: "Email",
   github: "GitHub",
   document: "Document",
-  memory: "Memory",
   note: "Note",
   task: "Task",
   meeting: "Meeting",
@@ -41,22 +35,18 @@ const typeLabels: Record<SearchResultItem["type"], string> = {
 };
 
 const staticNav = [
-  { label: "Dashboard", path: "/" },
-  { label: "AI Assistant", path: "/assistant" },
+  { label: "AI Assistant", path: "/" },
   { label: "Voice", path: "/voice" },
-  { label: "Memory", path: "/memory" },
   { label: "Knowledge Base", path: "/knowledge" },
   { label: "Notes", path: "/notes" },
   { label: "Tasks", path: "/tasks" },
   { label: "Calendar", path: "/calendar" },
-  { label: "Email", path: "/email" },
   { label: "Meetings", path: "/meetings" },
   { label: "Resume Screening", path: "/resume-screening" },
   { label: "GitHub", path: "/github" },
-  { label: "Database", path: "/database" },
   { label: "Webhooks", path: "/webhooks" },
-  { label: "Approvals", path: "/approvals" },
   { label: "Tool Activity", path: "/tool-activity" },
+  { label: "Tool Permissions", path: "/tool-permissions" },
   { label: "Settings", path: "/settings" },
 ];
 

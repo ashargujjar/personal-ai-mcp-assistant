@@ -4,7 +4,9 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 import json
+from typing import Optional
 from langgraph.errors import GraphRecursionError
+from langgraph.types import Command
 from fastapi import Depends, FastAPI
 from langchain.messages import AIMessageChunk, HumanMessage
 from pydantic import BaseModel,Field
@@ -17,9 +19,10 @@ app = FastAPI()
 
 
 class ChatRequest(BaseModel):
-    message: str=Field(max_length=500)
+    message: Optional[str] = Field(default=None, max_length=500)
     threadId: str
     stream: bool = True
+    resume: Optional[dict] = None
 
 
 @app.get("/")
@@ -31,9 +34,14 @@ async def chat(payload: ChatRequest, jwt_token: str = Depends(verify_jwt)):
     async def event_stream():
         async with get_mcp_tools(jwt_token) as mcp_tools:
             graph = build_graph(mcp_tools)
+            graph_input = (
+                Command(resume=payload.resume)
+                if payload.resume
+                else {"messages": [HumanMessage(content=payload.message)]}
+            )
             try:
                 async for mode, data in graph.astream(
-                    {"messages": [HumanMessage(content=payload.message)]},
+                    graph_input,
                     config={
                         "configurable": {"jwt": jwt_token, "thread_id": payload.threadId},
                         "recursion_limit": 12,
@@ -46,6 +54,11 @@ async def chat(payload: ChatRequest, jwt_token: str = Depends(verify_jwt)):
                             yield f"data: {json.dumps({'type': 'content', 'content': chunk.content})}\n\n"
 
                     elif mode == "updates":
+                        if "__interrupt__" in data:
+                            interrupt_payload = data["__interrupt__"][0].value
+                            yield f"data: {json.dumps({'type': 'confirmation_required', **interrupt_payload})}\n\n"
+                            return
+
                         for node_name, node_output in data.items():
                             if node_name == "supervisor":
                                 for msg in node_output.get("messages", []):

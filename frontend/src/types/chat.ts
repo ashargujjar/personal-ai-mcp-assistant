@@ -20,6 +20,19 @@ export interface SourceCitation {
   url?: string;
 }
 
+export type ConfirmationAction = "send_email" | "delete_email" | "create_event" | "delete_event";
+
+export interface PendingConfirmation {
+  action: ConfirmationAction;
+  args: Record<string, unknown>;
+  resolved?: "accept" | "reject" | "edit";
+}
+
+export type ConfirmationDecision =
+  | { type: "accept" }
+  | { type: "reject" }
+  | { type: "edit"; message: string };
+
 export interface ChatMessage {
   id: ID;
   role: MessageRole;
@@ -29,6 +42,7 @@ export interface ChatMessage {
   sources?: SourceCitation[];
   isStreaming?: boolean;
   feedback?: "up" | "down" | null;
+  pendingConfirmation?: PendingConfirmation;
 }
 
 export interface Conversation {

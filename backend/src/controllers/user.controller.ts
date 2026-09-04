@@ -4,9 +4,9 @@ import { AppError } from "../middleware/errorHandler";
 
 export async function chatAssistant(req: Request, res: Response, next: NextFunction) {
   try {
-    const { chatText, threadId } = req.body;
-    if (!chatText) {
-      throw new AppError("chatText is required", 400);
+    const { chatText, threadId, resume } = req.body;
+    if (!chatText && !resume) {
+      throw new AppError("chatText or resume is required", 400);
     }
     if (!threadId) {
       throw new AppError("threadId is required", 400);
@@ -28,7 +28,7 @@ export async function chatAssistant(req: Request, res: Response, next: NextFunct
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ stream: true, message: chatText, threadId }),
+      body: JSON.stringify({ stream: true, message: chatText, threadId, resume }),
     });
 
     if (!aiRes.ok || !aiRes.body) {

@@ -2,21 +2,23 @@ import { Check, Copy, RotateCcw, ThumbsDown, ThumbsUp } from "lucide-react";
 import * as React from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { ConfirmationCard } from "./ConfirmationCard";
 import { SourceCards } from "./SourceCards";
 import { ToolActivityList } from "./ToolActivityList";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
 import { cn, initials } from "@/lib/utils";
-import type { ChatMessage } from "@/types";
+import type { ChatMessage, ConfirmationDecision } from "@/types";
 
 interface MessageBubbleProps {
   message: ChatMessage;
   onRegenerate?: (id: string) => void;
   onFeedback?: (id: string, feedback: "up" | "down") => void;
+  onConfirmationDecide?: (messageId: string, decision: ConfirmationDecision) => void;
 }
 
-export function MessageBubble({ message, onRegenerate, onFeedback }: MessageBubbleProps) {
+export function MessageBubble({ message, onRegenerate, onFeedback, onConfirmationDecide }: MessageBubbleProps) {
   const { user } = useAuth();
   const [copied, setCopied] = React.useState(false);
   const isUser = message.role === "user";
@@ -67,6 +69,13 @@ export function MessageBubble({ message, onRegenerate, onFeedback }: MessageBubb
         )}
 
         {message.sources && message.sources.length > 0 && <SourceCards sources={message.sources} />}
+
+        {message.pendingConfirmation && (
+          <ConfirmationCard
+            confirmation={message.pendingConfirmation}
+            onDecide={(decision) => onConfirmationDecide?.(message.id, decision)}
+          />
+        )}
 
         {!message.isStreaming && message.content && (
           <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">

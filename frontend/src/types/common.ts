@@ -23,7 +23,7 @@ export type Source = "email" | "meeting" | "github" | "manual" | "ai" | "calenda
 
 export interface SearchResultItem {
   id: ID;
-  type: "email" | "github" | "document" | "memory" | "note" | "task" | "meeting" | "calendar";
+  type: "github" | "document" | "note" | "task" | "meeting" | "calendar";
   title: string;
   subtitle: string;
   path: string;

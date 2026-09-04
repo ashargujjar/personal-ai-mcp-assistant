@@ -1,8 +1,7 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { Copy, CreditCard, Key, RefreshCw } from "lucide-react";
 import * as React from "react";
 import { useSearchParams } from "react-router-dom";
-import { PermissionRow } from "@/components/settings/PermissionRow";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Badge } from "@/components/ui/badge";
@@ -17,7 +16,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/hooks/useTheme";
 import { cn } from "@/lib/utils";
-import { gmailService } from "@/services/gmailService";
 
 const sections = [
   "General",
@@ -27,7 +25,6 @@ const sections = [
   "Notifications",
   "Security",
   "Privacy",
-  "Tool Permissions",
   "API",
   "Billing",
 ] as const;
@@ -76,7 +73,6 @@ export default function Settings() {
           {active === "Notifications" && <NotificationsSection />}
           {active === "Security" && <SecuritySection />}
           {active === "Privacy" && <PrivacySection />}
-          {active === "Tool Permissions" && <ToolPermissionsSection />}
           {active === "API" && <ApiSection />}
           {active === "Billing" && <BillingSection />}
         </div>
@@ -261,71 +257,6 @@ function PrivacySection() {
         onConfirm={() => toast({ title: "This is a demo", description: "Account deletion is disabled in this preview." })}
       />
     </Card>
-  );
-}
-
-function ToolPermissionsSection() {
-  const { token } = useAuth();
-  const { toast } = useToast();
-
-  const status = useQuery({
-    queryKey: ["gmail", "status"],
-    queryFn: () => gmailService.getStatus(token),
-    enabled: Boolean(token),
-  });
-
-  async function handleConnectGmail() {
-    try {
-      const url = await gmailService.getConnectUrl(token);
-      window.location.href = url;
-    } catch (err) {
-      toast({ title: err instanceof Error ? err.message : "Failed to start Gmail connection" });
-    }
-  }
-
-  return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>GitHub</CardTitle>
-        </CardHeader>
-        <CardContent className="divide-y divide-border">
-          <PermissionRow label="Read repositories" level="allowed" />
-          <PermissionRow label="Read issues" level="allowed" />
-          <PermissionRow label="Create issues" level="approval" />
-          <PermissionRow label="Create pull requests" level="approval" />
-          <PermissionRow label="Delete repositories" level="disabled" />
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader className="flex-row items-center justify-between space-y-0">
-          <CardTitle>Gmail</CardTitle>
-          {status.data?.connected ? (
-            <Badge variant="success">Connected</Badge>
-          ) : (
-            <Button size="sm" onClick={handleConnectGmail} disabled={status.isLoading}>
-              Connect Gmail
-            </Button>
-          )}
-        </CardHeader>
-        <CardContent className="divide-y divide-border">
-          <PermissionRow label="Read emails" level="allowed" />
-          <PermissionRow label="Search emails" level="allowed" />
-          <PermissionRow label="Send emails" level="approval" />
-          <PermissionRow label="Delete emails" level="disabled" />
-        </CardContent>
-      </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle>Calendar</CardTitle>
-        </CardHeader>
-        <CardContent className="divide-y divide-border">
-          <PermissionRow label="Read events" level="allowed" />
-          <PermissionRow label="Create events" level="approval" />
-          <PermissionRow label="Delete events" level="approval" />
-        </CardContent>
-      </Card>
-    </div>
   );
 }
 

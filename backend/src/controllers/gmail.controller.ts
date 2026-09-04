@@ -126,6 +126,33 @@ export async function gmailCallback(
   }
 }
 
+export async function disconnectGmail(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    if (!req.user) throw new AppError("Authentication required", 401);
+    const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+
+    if (user?.gmailRefreshToken) {
+      const client = buildOAuthClient();
+      await client.revokeToken(user.gmailRefreshToken).catch(() => {
+        // Token may already be invalid/expired on Google's side — proceed to clear it locally regardless.
+      });
+    }
+
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: { gmailAccessToken: null, gmailRefreshToken: null, gmailTokenExpiry: null },
+    });
+
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function listMessages(
   req: Request,
   res: Response,

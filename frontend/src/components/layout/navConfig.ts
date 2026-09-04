@@ -1,16 +1,12 @@
 import {
   Activity,
-  BrainCircuit,
   Calendar,
   CheckSquare,
-  Database,
   Github,
   Layers,
-  LayoutDashboard,
-  Mail,
+  Lock,
   Mic,
   NotebookText,
-  ShieldCheck,
   Sparkles,
   UserSearch,
   Users,
@@ -34,15 +30,13 @@ export const navGroups: NavGroup[] = [
   {
     label: "Workspace",
     items: [
-      { label: "Dashboard", path: "/", icon: LayoutDashboard },
-      { label: "Assistant", path: "/assistant", icon: Sparkles },
+      { label: "Assistant", path: "/", icon: Sparkles },
       { label: "Voice", path: "/voice", icon: Mic },
     ],
   },
   {
     label: "Knowledge",
     items: [
-      { label: "Memory", path: "/memory", icon: BrainCircuit },
       { label: "Knowledge Base", path: "/knowledge", icon: Layers },
       { label: "Notes", path: "/notes", icon: NotebookText },
     ],
@@ -52,24 +46,20 @@ export const navGroups: NavGroup[] = [
     items: [
       { label: "Tasks", path: "/tasks", icon: CheckSquare, badgeKey: "pendingTasks" },
       { label: "Calendar", path: "/calendar", icon: Calendar },
-      { label: "Email", path: "/email", icon: Mail, badgeKey: "unreadEmails" },
       { label: "Meetings", path: "/meetings", icon: Users },
       { label: "Resume Screening", path: "/resume-screening", icon: UserSearch },
     ],
   },
   {
     label: "Connections",
-    items: [
-      { label: "GitHub", path: "/github", icon: Github, badgeKey: "openPRs" },
-      { label: "Database", path: "/database", icon: Database },
-    ],
+    items: [{ label: "GitHub", path: "/github", icon: Github, badgeKey: "openPRs" }],
   },
   {
     label: "Automation",
     items: [
       { label: "Webhooks", path: "/webhooks", icon: Webhook },
-      { label: "Approvals", path: "/approvals", icon: ShieldCheck, badgeKey: "pendingApprovals" },
       { label: "Tool Activity", path: "/tool-activity", icon: Activity },
+      { label: "Tool Permissions", path: "/tool-permissions", icon: Lock },
     ],
   },
 ];

@@ -28,7 +28,7 @@ export function CreateItemDialog({ repo }: { repo: Repository }) {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["approvals", "list"] });
-      toast({ title: "Sent for approval", description: "Nothing is created on GitHub until you approve it in the Approval Center." });
+      toast({ title: "Sent for approval", description: "Nothing is created on GitHub until this is approved." });
       setTitle("");
       setDescription("");
       setOpen(false);

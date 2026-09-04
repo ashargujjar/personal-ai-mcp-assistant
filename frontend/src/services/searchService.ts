@@ -1,7 +1,5 @@
-import { emails } from "@/mock/email";
 import { documents } from "@/mock/knowledge";
 import { issues, repositories } from "@/mock/github";
-import { memories } from "@/mock/memory";
 import { notes } from "@/mock/notes";
 import { tasks } from "@/mock/tasks";
 import { meetings } from "@/mock/meetings";
@@ -9,7 +7,7 @@ import { calendarEvents } from "@/mock/calendar";
 import { sleep } from "@/lib/utils";
 import type { SearchResultItem } from "@/types";
 
-export type SearchScope = "all" | "email" | "github" | "document" | "memory" | "note" | "task" | "meeting" | "calendar";
+export type SearchScope = "all" | "github" | "document" | "note" | "task" | "meeting" | "calendar";
 
 export const searchService = {
   async search(query: string, scope: SearchScope = "all"): Promise<SearchResultItem[]> {
@@ -19,13 +17,6 @@ export const searchService = {
 
     const results: SearchResultItem[] = [];
 
-    if (scope === "all" || scope === "email") {
-      emails
-        .filter((e) => e.subject.toLowerCase().includes(q) || e.body.toLowerCase().includes(q))
-        .forEach((e) =>
-          results.push({ id: e.id, type: "email", title: e.subject, subtitle: e.sender.name, path: `/email?id=${e.id}` })
-        );
-    }
     if (scope === "all" || scope === "github") {
       issues
         .filter((i) => i.title.toLowerCase().includes(q))
@@ -41,11 +32,6 @@ export const searchService = {
       documents
         .filter((d) => d.filename.toLowerCase().includes(q))
         .forEach((d) => results.push({ id: d.id, type: "document", title: d.filename, subtitle: "Knowledge Base", path: `/knowledge` }));
-    }
-    if (scope === "all" || scope === "memory") {
-      memories
-        .filter((m) => m.content.toLowerCase().includes(q))
-        .forEach((m) => results.push({ id: m.id, type: "memory", title: m.content, subtitle: m.category, path: `/memory` }));
     }
     if (scope === "all" || scope === "note") {
       notes

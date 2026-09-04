@@ -10,7 +10,9 @@ import httpx
 from fastmcp import FastMCP
 from fastmcp.server.dependencies import get_http_headers
 from langchain_openai import OpenAIEmbeddings
+import re
 
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 mcp = FastMCP("Personal Assistant mcp")
 
 NODE_URL = os.environ["NODE_URL"]
@@ -113,6 +115,11 @@ async def get_email(message_id: str) -> str:
 @mcp.tool()
 async def send_email(to: str, subject: str, body: str) -> str:
     """Send an email on the user's behalf."""
+    if not EMAIL_RE.match(to.strip()):
+         raise ValueError(
+            f"'{to}' is not a valid email address. Ask the user for the correct recipient "
+            "instead of guessing."
+        )
     jwt = _get_jwt()
     result = await _request("POST", "/gmail/send", jwt, {"to": to, "subject": subject, "body": body})
     return f"Email sent (id: {result['data']['id']})."
@@ -124,6 +131,68 @@ async def delete_email(message_id: str) -> str:
     jwt = _get_jwt()
     await _request("DELETE", f"/gmail/messages/{message_id}", jwt)
     return f"Deleted email {message_id}."
+
+
+@mcp.tool()
+async def check_calendar_connection_status() -> str:
+    """Checks whether the user's Google Calendar is connected."""
+    jwt = _get_jwt()
+    result = await _request("GET", "/calendar/status", jwt)
+    connected = result["data"]["connected"]
+    return "Calendar is connected." if connected else "Calendar is not connected."
+
+
+@mcp.tool()
+async def list_events() -> str:
+    """List the user's next 10 upcoming Calendar events (id, title, start, end, location, attendees)."""
+    jwt = _get_jwt()
+    result = await _request("GET", "/calendar/events", jwt)
+    events = result["data"]
+    if not events:
+        return "No upcoming events found."
+    return "\n".join(
+        f"- [{e['id']}] {e['title']} | {e['start']} to {e['end']}"
+        f"{' | ' + e['location'] if e.get('location') else ''}"
+        f"{' | attendees: ' + ', '.join(e['attendees']) if e.get('attendees') else ''}"
+        for e in events
+    )
+
+
+@mcp.tool()
+async def get_event(event_id: str) -> str:
+    """Get the full details of a single Calendar event by its id, from list_events results."""
+    jwt = _get_jwt()
+    result = await _request("GET", f"/calendar/events/{event_id}", jwt)
+    e = result["data"]
+    lines = [f"Title: {e['title']}", f"Start: {e['start']}", f"End: {e['end']}"]
+    if e.get("location"):
+        lines.append(f"Location: {e['location']}")
+    if e.get("attendees"):
+        lines.append(f"Attendees: {', '.join(e['attendees'])}")
+    if e.get("description"):
+        lines.append(f"\n{e['description']}")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def create_event(title: str, start: str, end: str, description: Optional[str] = None,
+                        attendees: Optional[list[str]] = None) -> str:
+    """Create a Calendar event. `start` and `end` must be ISO 8601 datetimes (e.g. '2026-09-05T14:00:00-07:00').
+    `attendees` is an optional list of email addresses."""
+    jwt = _get_jwt()
+    result = await _request(
+        "POST", "/calendar/events", jwt,
+        {"title": title, "description": description, "start": start, "end": end, "attendees": attendees},
+    )
+    return f"Event created (id: {result['data']['id']})."
+
+
+@mcp.tool()
+async def delete_event(event_id: str) -> str:
+    """Delete a Calendar event by its id, from list_events results."""
+    jwt = _get_jwt()
+    await _request("DELETE", f"/calendar/events/{event_id}", jwt)
+    return f"Deleted event {event_id}."
 
 
 if __name__ == "__main__":

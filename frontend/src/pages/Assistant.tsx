@@ -7,7 +7,7 @@ import { MessageBubble } from "@/components/chat/MessageBubble";
 import { QuickActionsGrid } from "@/components/chat/QuickActionsGrid";
 import { assistantService } from "@/services/assistantService";
 import { useAuth } from "@/hooks/useAuth";
-import type { ChatMessage } from "@/types";
+import type { ChatMessage, ConfirmationDecision } from "@/types";
 
 export default function Assistant() {
   const { token } = useAuth();
@@ -53,16 +53,69 @@ export default function Assistant() {
       setMessages((prev) => prev.map((m) => (m.id === assistantMessageId ? { ...m, ...patch } : m)));
     };
 
-    await assistantService.sendMessage(
-      prompt,
-      threadId,
-      token,
-      (partial) => updateAssistantMessage({ content: partial, isStreaming: true }),
-      (executions) => updateAssistantMessage({ toolExecutions: executions })
-    );
+    try {
+      const result = await assistantService.sendMessage(
+        prompt,
+        threadId,
+        token,
+        (partial) => updateAssistantMessage({ content: partial, isStreaming: true }),
+        (executions) => updateAssistantMessage({ toolExecutions: executions })
+      );
+      updateAssistantMessage({ isStreaming: false, pendingConfirmation: result.pendingConfirmation });
+    } catch (err) {
+      updateAssistantMessage({
+        content: err instanceof Error ? err.message : "Something went wrong. Please try again.",
+        isStreaming: false,
+      });
+    } finally {
+      setIsBusy(false);
+    }
+  }
 
-    updateAssistantMessage({ isStreaming: false });
-    setIsBusy(false);
+  async function handleConfirmationDecide(messageId: string, decision: ConfirmationDecision) {
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === messageId && m.pendingConfirmation
+          ? { ...m, pendingConfirmation: { ...m.pendingConfirmation, resolved: decision.type } }
+          : m
+      )
+    );
+    setIsBusy(true);
+
+    const assistantMessageId = `assistant-${Date.now()}`;
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: assistantMessageId,
+        role: "assistant",
+        content: "",
+        createdAt: new Date().toISOString(),
+        isStreaming: true,
+        toolExecutions: [],
+      },
+    ]);
+
+    const updateResumeMessage = (patch: Partial<ChatMessage>) => {
+      setMessages((prev) => prev.map((m) => (m.id === assistantMessageId ? { ...m, ...patch } : m)));
+    };
+
+    try {
+      const result = await assistantService.resumeChat(
+        threadId,
+        decision,
+        token,
+        (partial) => updateResumeMessage({ content: partial, isStreaming: true }),
+        (executions) => updateResumeMessage({ toolExecutions: executions })
+      );
+      updateResumeMessage({ isStreaming: false, pendingConfirmation: result.pendingConfirmation });
+    } catch (err) {
+      updateResumeMessage({
+        content: err instanceof Error ? err.message : "Something went wrong. Please try again.",
+        isStreaming: false,
+      });
+    } finally {
+      setIsBusy(false);
+    }
   }
 
   function handleRegenerate(id: string) {
@@ -79,6 +132,7 @@ export default function Assistant() {
   }
 
   const isEmpty = messages.length === 0;
+  const hasUnresolvedConfirmation = messages.some((m) => m.pendingConfirmation && !m.pendingConfirmation.resolved);
 
   return (
     <div className="mx-auto flex h-full max-w-4xl flex-col">
@@ -106,14 +160,20 @@ export default function Assistant() {
         ) : (
           <div className="space-y-6">
             {messages.map((message) => (
-              <MessageBubble key={message.id} message={message} onRegenerate={handleRegenerate} onFeedback={handleFeedback} />
+              <MessageBubble
+                key={message.id}
+                message={message}
+                onRegenerate={handleRegenerate}
+                onFeedback={handleFeedback}
+                onConfirmationDecide={handleConfirmationDecide}
+              />
             ))}
           </div>
         )}
       </div>
 
       <div className="border-t border-border bg-background px-4 py-4 sm:px-6">
-        <ChatInput onSend={handleSend} disabled={isBusy} />
+        <ChatInput onSend={handleSend} disabled={isBusy || hasUnresolvedConfirmation} />
         <p className="mt-2 text-center text-xs text-muted-foreground">
           NEXUS can make mistakes. Verify important information.
         </p>

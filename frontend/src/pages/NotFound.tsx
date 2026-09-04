@@ -12,7 +12,7 @@ export default function NotFound() {
         description="The page you're looking for doesn't exist or has moved."
         action={
           <Button asChild size="sm">
-            <Link to="/">Back to Dashboard</Link>
+            <Link to="/">Back to Assistant</Link>
           </Button>
         }
       />

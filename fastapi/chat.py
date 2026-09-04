@@ -9,7 +9,8 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from prompts.prompts import gmail_system_message,system_message
 from tools.tools import draft_email
 from langgraph.checkpoint.memory import MemorySaver
-
+from langgraph.types import interrupt
+from langchain.messages import ToolMessage
 class State(BaseModel):
     messages: Annotated[list[AnyMessage], add_messages]
     routed_to: Optional[Literal["gmail", "github"]] = None
@@ -46,6 +47,7 @@ def after_tools(state: State):
     return "supervisor"
 
 
+
 def build_graph(mcp_tools: list):
     """Build a graph bound to this request's MCP tools (add_memory/get_memory/delete_memory).
 
@@ -53,8 +55,11 @@ def build_graph(mcp_tools: list):
     the tools carry a reference to that connection, so this needs to be called fresh for
     every request, not once at import time.
     """
+    CONFIRM_TOOLS = {"send_email", "delete_email"}
     GMAIL_TOOL_NAMES = {"list_emails", "get_email", "send_email", "delete_email"}
     gmail_tools = [t for t in mcp_tools if t.name in GMAIL_TOOL_NAMES]+[draft_email]
+    gmail_tools_by_name = {t.name: t for t in gmail_tools}
+
     supervisor_tools = [t for t in mcp_tools if t.name not in GMAIL_TOOL_NAMES] + [route]
 
     llm_with_tools = llm.bind_tools(supervisor_tools)       # supervisor never sees gmail tools
@@ -75,7 +80,30 @@ def build_graph(mcp_tools: list):
         response = gmail_llm.invoke(context)
         return {"messages": [response]}
 
+    async def gmail_tools_node(state: State):
+        last_msg = state.messages[-1]
+        outputs = []
+        for tool_call in last_msg.tool_calls:
+            tool = gmail_tools_by_name[tool_call["name"]]
 
+            if tool_call["name"] in CONFIRM_TOOLS:
+                decision = interrupt({"action": tool_call["name"], "args": tool_call["args"]})
+
+                if decision["type"] == "accept":
+                    result = await tool.ainvoke(tool_call["args"])
+                elif decision["type"] == "reject":
+                    result = f"User rejected this {tool_call['name']} action. Do not retry it as-is."
+                else:
+                    result = (
+                        f"User did not accept this {tool_call['name']} action as drafted. "
+                        f"Their instruction: {decision['message']}"
+                    )
+            else:
+                result = await tool.ainvoke(tool_call["args"])
+
+            outputs.append(ToolMessage(content=str(result), tool_call_id=tool_call["id"], name=tool_call["name"]))
+
+        return {"messages": outputs}
     def summarize(state: State):
         messages_to_drop = state.messages[:-KEEP_LAST_N_RAW]
         if not messages_to_drop:
@@ -117,7 +145,7 @@ def build_graph(mcp_tools: list):
     builder.add_node("summarize",summarize)
     builder.add_node("github", github)
     builder.add_node("supervisor_tools", ToolNode(supervisor_tools))
-    builder.add_node("gmail_tools",ToolNode(gmail_tools))
+    builder.add_node("gmail_tools", gmail_tools_node)
     builder.add_edge(START, "supervisor")
     builder.add_conditional_edges("supervisor", after_supervisor, {"tools": "supervisor_tools", "summarize": "summarize", END: END})
     builder.add_conditional_edges(

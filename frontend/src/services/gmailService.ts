@@ -19,4 +19,12 @@ export const gmailService = {
     const json = await res.json();
     return json.data.url;
   },
+
+  async disconnect(token: string | null): Promise<void> {
+    const res = await fetch(`${API_URL}/gmail/disconnect`, { method: "DELETE", headers: authHeaders(token) });
+    if (!res.ok) {
+      const json = await res.json().catch(() => null);
+      throw new Error(json?.message ?? "Failed to disconnect Gmail");
+    }
+  },
 };
