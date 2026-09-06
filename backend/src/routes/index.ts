@@ -4,6 +4,7 @@ import calendarRoutes from "./calendar.routes";
 import chatRoutes from "./chat.routes";
 import gmailRoutes from "./gmail.routes";
 import memoryRoutes from "./memory.routes";
+import taskRoutes from "./task.routes";
 
 const router = Router();
 
@@ -16,5 +17,6 @@ router.use("/memory", memoryRoutes);
 router.use("/chat", chatRoutes);
 router.use("/gmail", gmailRoutes);
 router.use("/calendar", calendarRoutes);
+router.use("/tasks", taskRoutes);
 
 export default router;

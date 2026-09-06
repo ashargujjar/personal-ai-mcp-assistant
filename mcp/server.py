@@ -201,6 +201,92 @@ async def delete_event(event_id: str) -> str:
     return f"Deleted event {event_id}."
 
 
+@mcp.tool()
+async def list_tasks() -> str:
+    """List the user's tasks (id, title, status, priority, deadline, project, source)."""
+    jwt = _get_jwt()
+    result = await _request("GET", "/tasks", jwt)
+    tasks = result["data"]
+    if not tasks:
+        return "No tasks found."
+    return "\n".join(
+        f"- [{t['id']}] {t['title']} | status: {t['status']} | priority: {t['priority']}"
+        f"{' | due: ' + t['deadline'] if t.get('deadline') else ''}"
+        f"{' | project: ' + t['project'] if t.get('project') else ''}"
+        for t in tasks
+    )
+
+
+@mcp.tool()
+async def get_task(task_id: str) -> str:
+    """Get the full details of a single task by its id, from list_tasks results."""
+    jwt = _get_jwt()
+    result = await _request("GET", f"/tasks/{task_id}", jwt)
+    t = result["data"]
+    lines = [f"Title: {t['title']}", f"Status: {t['status']}", f"Priority: {t['priority']}"]
+    if t.get("deadline"):
+        lines.append(f"Deadline: {t['deadline']}")
+    if t.get("project"):
+        lines.append(f"Project: {t['project']}")
+    if t.get("source"):
+        lines.append(f"Source: {t['source']}")
+    if t.get("description"):
+        lines.append(f"\n{t['description']}")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def create_task(title: str, description: Optional[str] = None, priority: Optional[str] = None,
+                       deadline: Optional[str] = None, project: Optional[str] = None) -> str:
+    """Create a task. `priority` is one of low/medium/high/urgent (default medium). `deadline` must be
+    an ISO 8601 datetime if given — do not guess one the user hasn't stated. `project` is a free-text
+    label for what the task relates to (e.g. a client name or repo, like 'Bright Client' or 'auth-service')."""
+    jwt = _get_jwt()
+    payload = {"title": title, "source": "ai"}
+    if description is not None:
+        payload["description"] = description
+    if priority is not None:
+        payload["priority"] = priority
+    if deadline is not None:
+        payload["deadline"] = deadline
+    if project is not None:
+        payload["project"] = project
+    result = await _request("POST", "/tasks", jwt, payload)
+    return f"Task created (id: {result['data']['id']})."
+
+
+@mcp.tool()
+async def update_task(task_id: str, title: Optional[str] = None, description: Optional[str] = None,
+                       priority: Optional[str] = None, deadline: Optional[str] = None,
+                       project: Optional[str] = None, status: Optional[str] = None) -> str:
+    """Update a task by its id, from list_tasks results. Only the fields you pass are changed.
+    `status` is one of todo/in-progress/waiting/done — use this to mark a task done."""
+    jwt = _get_jwt()
+    payload = {}
+    if title is not None:
+        payload["title"] = title
+    if description is not None:
+        payload["description"] = description
+    if priority is not None:
+        payload["priority"] = priority
+    if deadline is not None:
+        payload["deadline"] = deadline
+    if project is not None:
+        payload["project"] = project
+    if status is not None:
+        payload["status"] = status
+    await _request("PATCH", f"/tasks/{task_id}", jwt, payload)
+    return f"Task {task_id} updated."
+
+
+@mcp.tool()
+async def delete_task(task_id: str) -> str:
+    """Delete a task by its id, from list_tasks results."""
+    jwt = _get_jwt()
+    await _request("DELETE", f"/tasks/{task_id}", jwt)
+    return f"Deleted task {task_id}."
+
+
 if __name__ == "__main__":
     mcp.run(
         transport="streamable-http",

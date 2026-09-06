@@ -1,4 +1,4 @@
-import { AlertCircle, FileText, Loader2, Trash2 } from "lucide-react";
+import { AlertCircle, ExternalLink, FileText, Loader2, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -41,9 +41,18 @@ export function DocumentCard({ doc, onDelete }: { doc: KnowledgeDocument; onDele
             <span>{formatRelativeTime(doc.uploadedAt)}</span>
           </div>
         </div>
-        <Button variant="ghost" size="icon-sm" className="shrink-0 text-muted-foreground hover:text-destructive" onClick={() => onDelete(doc.id)} aria-label="Delete document">
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
+        <div className="flex shrink-0 items-center gap-0.5">
+          {doc.fileUrl && (
+            <Button variant="ghost" size="icon-sm" className="text-muted-foreground" asChild aria-label="View document">
+              <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            </Button>
+          )}
+          <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-destructive" onClick={() => onDelete(doc.id)} aria-label="Delete document">
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
     </Card>
   );

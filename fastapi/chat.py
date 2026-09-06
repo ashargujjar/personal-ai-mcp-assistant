@@ -15,7 +15,7 @@ from langchain.messages import ToolMessage
 
 class State(BaseModel):
     messages: Annotated[list[AnyMessage], add_messages]
-    routed_to: Optional[Literal["gmail", "github", "calender"]] = None
+    routed_to: Optional[Literal["gmail", "github", "calender", "task"]] = None
     summary:str =""
     timezone: Optional[str] = None
  
@@ -34,7 +34,7 @@ def should_summarize(state: State) -> bool:
 
 
 @tool
-def route(agent: Literal["gmail", "github","calender"]) -> str:
+def route(agent: Literal["gmail", "github","calender","task"]) -> str:
     """Hand off the conversation to the given specialist agent."""
     return agent
 

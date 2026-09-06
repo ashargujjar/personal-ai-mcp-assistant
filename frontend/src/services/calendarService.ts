@@ -1,4 +1,7 @@
+import type { CalendarEvent } from "@/types";
+
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000/api";
+const DEFAULT_EVENT_COLOR = "239 84% 67%";
 
 function authHeaders(token: string | null): HeadersInit {
   return {
@@ -26,5 +29,32 @@ export const calendarService = {
       const json = await res.json().catch(() => null);
       throw new Error(json?.message ?? "Failed to disconnect Calendar");
     }
+  },
+
+  async listEvents(token: string | null, range?: { timeMin: string; timeMax: string }): Promise<CalendarEvent[]> {
+    const query = range ? `?timeMin=${encodeURIComponent(range.timeMin)}&timeMax=${encodeURIComponent(range.timeMax)}` : "";
+    const res = await fetch(`${API_URL}/calendar/events${query}`, { headers: authHeaders(token) });
+    if (!res.ok) {
+      const json = await res.json().catch(() => null);
+      throw new Error(json?.message ?? "Failed to load Calendar events");
+    }
+    const json = await res.json();
+    const events: Array<{
+      id: string;
+      title: string;
+      start: string;
+      end: string;
+      location?: string;
+      attendees?: string[];
+    }> = json.data;
+    return events.map((e) => ({
+      id: e.id,
+      title: e.title,
+      start: e.start,
+      end: e.end,
+      location: e.location,
+      attendees: e.attendees ?? [],
+      color: DEFAULT_EVENT_COLOR,
+    }));
   },
 };

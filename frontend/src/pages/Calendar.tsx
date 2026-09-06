@@ -4,11 +4,13 @@ import {
   addMonths,
   addWeeks,
   eachDayOfInterval,
+  endOfDay,
   endOfMonth,
   endOfWeek,
   format,
   isSameDay,
   isSameMonth,
+  startOfDay,
   startOfMonth,
   startOfWeek,
 } from "date-fns";
@@ -21,21 +23,38 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAuth } from "@/hooks/useAuth";
 import { cn, formatTime } from "@/lib/utils";
 import { calendarService } from "@/services/calendarService";
 import { meetingBriefs } from "@/mock/calendar";
 import type { CalendarEvent } from "@/types";
 
-const TODAY = new Date("2026-08-22T09:00:00");
+const TODAY = new Date();
 
 type ViewMode = "day" | "week" | "month";
 
 export default function Calendar() {
+  const { token } = useAuth();
   const [view, setView] = React.useState<ViewMode>("week");
   const [cursor, setCursor] = React.useState(TODAY);
   const [briefEvent, setBriefEvent] = React.useState<CalendarEvent | null>(null);
 
-  const events = useQuery({ queryKey: ["calendar", "events"], queryFn: calendarService.listEvents });
+  const range =
+    view === "day"
+      ? { timeMin: startOfDay(cursor), timeMax: endOfDay(cursor) }
+      : view === "week"
+        ? { timeMin: startOfWeek(cursor), timeMax: endOfWeek(cursor) }
+        : { timeMin: startOfWeek(startOfMonth(cursor)), timeMax: endOfWeek(endOfMonth(cursor)) };
+
+  const events = useQuery({
+    queryKey: ["calendar", "events", range.timeMin.toISOString(), range.timeMax.toISOString()],
+    queryFn: () =>
+      calendarService.listEvents(token, {
+        timeMin: range.timeMin.toISOString(),
+        timeMax: range.timeMax.toISOString(),
+      }),
+    enabled: !!token,
+  });
 
   function shift(direction: 1 | -1) {
     if (view === "day") setCursor((d) => addDays(d, direction));

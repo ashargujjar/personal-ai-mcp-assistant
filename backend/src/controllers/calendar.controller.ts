@@ -138,10 +138,12 @@ export async function listEvents(req: Request, res: Response, next: NextFunction
     if (!req.user) throw new AppError("Authentication required", 401);
     const calendar = await getCalendarClientForUser(req.user.id);
 
+    const { timeMin, timeMax } = req.query;
     const list = await calendar.events.list({
       calendarId: "primary",
-      maxResults: 10,
-      timeMin: new Date().toISOString(),
+      maxResults: typeof timeMin === "string" || typeof timeMax === "string" ? 250 : 10,
+      timeMin: typeof timeMin === "string" ? timeMin : new Date().toISOString(),
+      timeMax: typeof timeMax === "string" ? timeMax : undefined,
       singleEvents: true,
       orderBy: "startTime",
     });
