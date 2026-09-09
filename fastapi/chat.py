@@ -9,12 +9,14 @@ from tools.tools import draft_email, get_current_timezone
 from langgraph.checkpoint.memory import MemorySaver
 from agents.agents import (
     State,
+    after_route_guard,
     github,
     make_calender_node,
     make_gmail_node,
-    make_gmail_tools_node,
     make_supervisor_node,
-    make_task_node
+    make_task_node,
+    make_tools_node,
+    route_guard,
 )
 
 # tools all bind to supervisor for memory
@@ -37,9 +39,9 @@ def route(agent: Literal["gmail", "github","calender","task"]) -> str:
     return agent
 
 def after_tools(state: State):
-    last_msg = state.messages[-1]        # the ToolMessage just produced
+    last_msg = state.messages[-1]        
     if last_msg.name == "route":
-        return last_msg.content          # "gmail" or "github" or "calender" or "task" — route's own return value
+        return "route_guard"             # decides whether the chosen agent is actually allowed to run
     return "supervisor"
 
 
@@ -52,6 +54,9 @@ def build_graph(mcp_tools: list):
     every request, not once at import time.
     """
     CONFIRM_TOOLS = {"send_email", "delete_email"}
+    GMAIL_WRITE_TOOLS = {"send_email", "delete_email"}
+    CALENDAR_WRITE_TOOLS = {"create_event", "delete_event"}
+    TASK_WRITE_TOOLS = {"create_task", "update_task", "delete_task"}
     GMAIL_TOOL_NAMES = {"list_emails", "get_email", "send_email", "delete_email"}
     CALENDAR_TOOL_NAMES={"check_calendar_connection_status","list_events","get_event","create_event","delete_event"}
     TASK_TOOLS_NAMES={"list_tasks","get_task","create_task","update_task","delete_task"}
@@ -59,7 +64,9 @@ def build_graph(mcp_tools: list):
     gmail_tools_by_name = {t.name: t for t in gmail_tools}
     supervisor_tools = [t for t in mcp_tools if t.name not in GMAIL_TOOL_NAMES and t.name not in CALENDAR_TOOL_NAMES and t.name not in TASK_TOOLS_NAMES] + [route]
     calender_tools=[t for t in mcp_tools if t.name  in CALENDAR_TOOL_NAMES ] + [get_current_timezone]
+    calender_tools_by_name = {t.name: t for t in calender_tools}
     task_tools=[t for t in mcp_tools if t.name in TASK_TOOLS_NAMES]
+    task_tools_by_name = {t.name: t for t in task_tools}
 
     llm_with_tools = llm.bind_tools(supervisor_tools)       # supervisor never sees gmail tools
     gmail_llm = llm.bind_tools(gmail_tools)
@@ -70,7 +77,9 @@ def build_graph(mcp_tools: list):
     gmail = make_gmail_node(gmail_llm)
     calender = make_calender_node(calender_llm)
     task=make_task_node(task_llm)
-    gmail_tools_node = make_gmail_tools_node(gmail_tools_by_name, CONFIRM_TOOLS)
+    gmail_tools_node = make_tools_node(gmail_tools_by_name, confirm_tools=CONFIRM_TOOLS, write_tools=GMAIL_WRITE_TOOLS)
+    calender_tools_node = make_tools_node(calender_tools_by_name, write_tools=CALENDAR_WRITE_TOOLS)
+    task_tools_node = make_tools_node(task_tools_by_name, write_tools=TASK_WRITE_TOOLS)
 
     
     def summarize(state: State):
@@ -115,14 +124,18 @@ def build_graph(mcp_tools: list):
     builder.add_node("task",task)
     builder.add_node("summarize",summarize)
     builder.add_node("github", github)
-    builder.add_node("task_tools",ToolNode(task_tools))
+    builder.add_node("task_tools",task_tools_node)
     builder.add_node("supervisor_tools", ToolNode(supervisor_tools))
-    builder.add_node("calender_tools",ToolNode(calender_tools))
+    builder.add_node("calender_tools",calender_tools_node)
     builder.add_node("gmail_tools", gmail_tools_node)
+    builder.add_node("route_guard", route_guard)
     builder.add_edge(START, "supervisor")
     builder.add_conditional_edges("supervisor", after_supervisor, {"tools": "supervisor_tools", "summarize": "summarize", END: END})
     builder.add_conditional_edges(
-        "supervisor_tools", after_tools, {"gmail": "gmail", "github": "github","calender":"calender", "task":"task","supervisor": "supervisor"}
+        "supervisor_tools", after_tools, {"route_guard": "route_guard", "supervisor": "supervisor"}
+    )
+    builder.add_conditional_edges(
+        "route_guard", after_route_guard, {"gmail": "gmail", "github": "github", "calender": "calender", "task": "task", "supervisor": "supervisor"}
     )
     builder.add_conditional_edges("gmail", tools_condition, {"tools": "gmail_tools", END: "supervisor"})
     builder.add_edge("gmail_tools", "gmail")

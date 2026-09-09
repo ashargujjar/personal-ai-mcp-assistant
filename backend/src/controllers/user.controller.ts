@@ -43,7 +43,15 @@ export async function chatAssistant(req: Request, res: Response, next: NextFunct
 
     // aiRes.body is a stream/web ReadableStream (undici's fetch); Readable.fromWeb
     // expects node:stream/web's type, which isn't structurally identical, hence the cast.
-    Readable.fromWeb(aiRes.body as import("node:stream/web").ReadableStream).pipe(res);
+    const upstream = Readable.fromWeb(aiRes.body as import("node:stream/web").ReadableStream);
+    // The FastAPI side can close the socket mid-stream (an unhandled exception, a crash, etc.).
+    // pipe() forwards data but doesn't handle source errors — an unhandled 'error' event here
+    // would otherwise crash the whole Node process, taking down every other in-flight request.
+    upstream.on("error", (err) => {
+      if (!res.headersSent) return next(err);
+      res.end();
+    });
+    upstream.pipe(res);
   } catch (err) {
     next(err);
   }

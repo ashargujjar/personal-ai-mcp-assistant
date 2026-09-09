@@ -33,10 +33,19 @@ export type ConfirmationDecision =
   | { type: "reject" }
   | { type: "edit"; message: string };
 
+export interface ChatSegment {
+  node: string | null;
+  text: string;
+}
+
 export interface ChatMessage {
   id: ID;
   role: MessageRole;
   content: string;
+  /** content, grouped by which backend node produced it (in order) — e.g. a specialist's
+   * own answer vs. the supervisor's follow-up relay of it. Used to show only the last
+   * segment by default with earlier ones behind "View more", instead of one flat blob. */
+  segments?: ChatSegment[];
   createdAt: string;
   toolExecutions?: ToolExecution[];
   sources?: SourceCitation[];

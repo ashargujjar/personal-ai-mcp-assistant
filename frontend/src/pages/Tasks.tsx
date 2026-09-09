@@ -7,24 +7,30 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { taskService } from "@/services/taskService";
 import type { Task, TaskStatus } from "@/types";
 
-const TODAY = new Date("2026-08-22T00:00:00");
-const TODAY_KEY = "2026-08-22";
+const TODAY = new Date();
+const TODAY_KEY = TODAY.toISOString().slice(0, 10);
 
 function isSameLocalDate(iso: string) {
   return iso.slice(0, 10) === TODAY_KEY;
 }
 
 export default function Tasks() {
+  const { token } = useAuth();
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const tasksQuery = useQuery({ queryKey: ["tasks", "list"], queryFn: taskService.list });
+  const tasksQuery = useQuery({
+    queryKey: ["tasks", "list"],
+    queryFn: () => taskService.list(token),
+    enabled: !!token,
+  });
 
   const createMutation = useMutation({
-    mutationFn: (values: TaskFormValues) => taskService.create(values),
+    mutationFn: (values: TaskFormValues) => taskService.create(token, values),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tasks", "list"] });
       toast({ title: "Task created" });
@@ -32,7 +38,7 @@ export default function Tasks() {
   });
 
   const moveMutation = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: TaskStatus }) => taskService.updateStatus(id, status),
+    mutationFn: ({ id, status }: { id: string; status: TaskStatus }) => taskService.updateStatus(token, id, status),
     onMutate: async ({ id, status }) => {
       await queryClient.cancelQueries({ queryKey: ["tasks", "list"] });
       const previous = queryClient.getQueryData<Task[]>(["tasks", "list"]);

@@ -2,6 +2,7 @@ import { quickActions } from "@/mock/chat";
 import { sleep } from "@/lib/utils";
 import type {
   ChatMessage,
+  ChatSegment,
   ConfirmationDecision,
   PendingConfirmation,
   QuickAction,
@@ -20,6 +21,7 @@ function nextId(prefix: string) {
 export interface SendMessageResult {
   toolExecutions: ToolExecution[];
   content: string;
+  segments: ChatSegment[];
   sources?: SourceCitation[];
   pendingConfirmation?: PendingConfirmation;
 }
@@ -27,7 +29,7 @@ export interface SendMessageResult {
 async function streamChat(
   body: Record<string, unknown>,
   token: string | null,
-  onChunk: (partial: string) => void,
+  onChunk: (partial: string, segments: ChatSegment[]) => void,
   onToolUpdate: (executions: ToolExecution[]) => void
 ): Promise<SendMessageResult> {
   const res = await fetch(`${API_URL}/chat`, {
@@ -48,7 +50,10 @@ async function streamChat(
   const decoder = new TextDecoder();
   let buffer = "";
   let content = "";
-  let needsSeparator = false;
+  // Content is grouped by which backend node produced it, so the UI can show only the
+  // last node's text by default and tuck earlier ones (e.g. a specialist's own answer
+  // before the supervisor relays it) behind "View more" — real structure, not a guess.
+  const segments: ChatSegment[] = [];
   const toolExecutions: ToolExecution[] = [];
   let toolCounter = 0;
   let pendingConfirmation: PendingConfirmation | undefined;
@@ -66,15 +71,16 @@ async function streamChat(
       const parsed = JSON.parse(frame.slice(6));
 
       if (parsed.type === "content") {
-        // The agent can generate several separate replies in one turn (e.g. a line
-        // before calling a tool, then the final answer after) — insert a paragraph
-        // break between them instead of running the sentences together.
-        if (needsSeparator && content) {
-          content += "\n\n";
-          needsSeparator = false;
+        const node: string | null = parsed.node ?? null;
+        const last = segments[segments.length - 1];
+        if (last && last.node === node) {
+          last.text += parsed.content; // same node still streaming — concatenate token-by-token
+        } else {
+          segments.push({ node, text: parsed.content }); // a different node started — new segment
         }
-        content += parsed.content;
-        onChunk(content);
+
+        content = segments.map((s) => s.text).join("\n\n");
+        onChunk(content, segments);
       } else if (parsed.type === "tool_call") {
         if (parsed.status === "running") {
           toolCounter += 1;
@@ -84,7 +90,6 @@ async function streamChat(
             toolName: parsed.tool,
             status: "running",
           });
-          needsSeparator = true;
         } else if (parsed.status === "done") {
           const entry = [...toolExecutions]
             .reverse()
@@ -98,7 +103,7 @@ async function streamChat(
     }
   }
 
-  return { toolExecutions, content, pendingConfirmation };
+  return { toolExecutions, content, segments, pendingConfirmation };
 }
 
 export const assistantService = {
@@ -111,7 +116,7 @@ export const assistantService = {
     prompt: string,
     threadId: string,
     token: string | null,
-    onChunk: (partial: string) => void,
+    onChunk: (partial: string, segments: ChatSegment[]) => void,
     onToolUpdate: (executions: ToolExecution[]) => void
   ): Promise<SendMessageResult> {
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -122,7 +127,7 @@ export const assistantService = {
     threadId: string,
     decision: ConfirmationDecision,
     token: string | null,
-    onChunk: (partial: string) => void,
+    onChunk: (partial: string, segments: ChatSegment[]) => void,
     onToolUpdate: (executions: ToolExecution[]) => void
   ): Promise<SendMessageResult> {
     return streamChat({ threadId, resume: decision }, token, onChunk, onToolUpdate);

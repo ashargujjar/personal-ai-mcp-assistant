@@ -58,7 +58,7 @@ export default function Assistant() {
         prompt,
         threadId,
         token,
-        (partial) => updateAssistantMessage({ content: partial, isStreaming: true }),
+        (partial, segments) => updateAssistantMessage({ content: partial, segments, isStreaming: true }),
         (executions) => updateAssistantMessage({ toolExecutions: executions })
       );
       updateAssistantMessage({ isStreaming: false, pendingConfirmation: result.pendingConfirmation });
@@ -104,7 +104,7 @@ export default function Assistant() {
         threadId,
         decision,
         token,
-        (partial) => updateResumeMessage({ content: partial, isStreaming: true }),
+        (partial, segments) => updateResumeMessage({ content: partial, segments, isStreaming: true }),
         (executions) => updateResumeMessage({ toolExecutions: executions })
       );
       updateResumeMessage({ isStreaming: false, pendingConfirmation: result.pendingConfirmation });

@@ -18,41 +18,41 @@ interface MessageBubbleProps {
   onConfirmationDecide?: (messageId: string, decision: ConfirmationDecision) => void;
 }
 
-// The backend streams several separate replies into one `content` string, separated by blank
-// lines (e.g. "routing to calendar" narration, then the actual final answer). Only the last
-// block is the answer — the rest is process narration, collapsed by default once streaming ends.
-function AssistantResponse({ content }: { content: string }) {
+// `segments` groups the streamed content by which backend node produced it (e.g. a specialist's
+// own answer, then the supervisor's follow-up relay of it) — real structure from the backend,
+// not a text guess. Only the last segment shows by default; earlier ones sit behind "View more".
+function AssistantResponse({ message }: { message: ChatMessage }) {
   const [expanded, setExpanded] = React.useState(false);
-  const blocks = content.split(/\n{2,}/).filter((b) => b.trim());
-  const final = blocks[blocks.length - 1] ?? content;
-  const steps = blocks.slice(0, -1);
+  const segments = message.segments && message.segments.length > 0 ? message.segments : [{ node: null, text: message.content }];
+  const final = segments[segments.length - 1];
+  const earlier = segments.slice(0, -1).filter((s) => s.text.trim());
 
   return (
     <div className="text-sm leading-relaxed">
-      {steps.length > 0 && (
-        <div className="mb-2">
+      <div className="markdown-body">
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{final.text}</ReactMarkdown>
+      </div>
+      {earlier.length > 0 && (
+        <div className="mt-2">
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
             className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
           >
             {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-            {expanded ? "Hide steps" : "Show steps"}
+            {expanded ? "Hide earlier reply" : "View more"}
           </button>
           {expanded && (
             <div className="markdown-body mt-1.5 space-y-1.5 border-l-2 border-border pl-2.5 text-muted-foreground">
-              {steps.map((step, i) => (
+              {earlier.map((seg, i) => (
                 <ReactMarkdown key={i} remarkPlugins={[remarkGfm]}>
-                  {step}
+                  {seg.text}
                 </ReactMarkdown>
               ))}
             </div>
           )}
         </div>
       )}
-      <div className="markdown-body">
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{final}</ReactMarkdown>
-      </div>
     </div>
   );
 }
@@ -106,7 +106,7 @@ export function MessageBubble({ message, onRegenerate, onFeedback, onConfirmatio
                 </span>
               )
             ) : (
-              <AssistantResponse content={message.content} />
+              <AssistantResponse message={message} />
             )}
           </div>
         )}

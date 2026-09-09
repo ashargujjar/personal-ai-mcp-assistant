@@ -17,7 +17,7 @@ const sourceIcons: Record<Task["source"], LucideIcon> = {
 
 export function TaskCard({ task, draggable, onDragStart }: { task: Task; draggable?: boolean; onDragStart?: (e: React.DragEvent) => void }) {
   const SourceIcon = sourceIcons[task.source];
-  const isOverdue = task.deadline && new Date(task.deadline) < new Date("2026-08-22T00:00:00") && task.status !== "done";
+  const isOverdue = task.deadline && new Date(task.deadline) < new Date() && task.status !== "done";
 
   return (
     <Card

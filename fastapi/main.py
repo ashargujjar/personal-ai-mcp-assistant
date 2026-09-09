@@ -38,7 +38,13 @@ async def chat(payload: ChatRequest, jwt_token: str = Depends(verify_jwt)):
             graph_input = (
                 Command(resume=payload.resume)
                 if payload.resume
-                else {"messages": [HumanMessage(content=payload.message)], "timezone": payload.timezone}
+                else {
+                    "messages": [HumanMessage(content=payload.message)],
+                    "timezone": payload.timezone,
+                    "visited_agents": [],
+                    "blocked_repeat_agent": None,
+                    "executed_writes": [],
+                }
             )
             try:
                 async for mode, data in graph.astream(
@@ -52,7 +58,8 @@ async def chat(payload: ChatRequest, jwt_token: str = Depends(verify_jwt)):
                     if mode == "messages":
                         chunk, metadata = data
                         if isinstance(chunk, AIMessageChunk) and isinstance(chunk.content, str) and chunk.content:
-                            yield f"data: {json.dumps({'type': 'content', 'content': chunk.content})}\n\n"
+                            node_name = metadata.get("langgraph_node")
+                            yield f"data: {json.dumps({'type': 'content', 'content': chunk.content, 'node': node_name})}\n\n"
 
                     elif mode == "updates":
                         if "__interrupt__" in data:

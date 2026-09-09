@@ -1,53 +1,72 @@
-import { tasks as seedTasks } from "@/mock/tasks";
-import { sleep } from "@/lib/utils";
 import type { Priority, Source, Task, TaskStatus } from "@/types";
 
-let tasks: Task[] = [...seedTasks];
+const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000/api";
+
+function authHeaders(token: string | null): HeadersInit {
+  return {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
+async function parseResponse<T>(res: Response, fallbackMessage: string): Promise<T> {
+  if (!res.ok) {
+    const json = await res.json().catch(() => null);
+    throw new Error(json?.message ?? fallbackMessage);
+  }
+  const json = await res.json();
+  return json.data as T;
+}
 
 export const taskService = {
-  async list(): Promise<Task[]> {
-    await sleep(200);
-    return [...tasks].sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+  async list(token: string | null): Promise<Task[]> {
+    const res = await fetch(`${API_URL}/tasks`, { headers: authHeaders(token) });
+    return parseResponse<Task[]>(res, "Failed to load tasks");
   },
 
-  async create(input: {
-    title: string;
-    description?: string;
-    priority: Priority;
-    deadline?: string;
-    project?: string;
-    source?: Source;
-  }): Promise<Task> {
-    await sleep(250);
-    const task: Task = {
-      id: `task-${Date.now()}`,
-      title: input.title,
-      description: input.description,
-      priority: input.priority,
-      deadline: input.deadline,
-      project: input.project,
-      source: input.source ?? "manual",
-      status: "todo",
-      createdAt: new Date().toISOString(),
-    };
-    tasks = [task, ...tasks];
-    return task;
+  async create(
+    token: string | null,
+    input: {
+      title: string;
+      description?: string;
+      priority: Priority;
+      deadline?: string;
+      project?: string;
+      source?: Source;
+    },
+  ): Promise<Task> {
+    const res = await fetch(`${API_URL}/tasks`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify(input),
+    });
+    return parseResponse<Task>(res, "Failed to create task");
   },
 
-  async updateStatus(id: string, status: TaskStatus): Promise<Task | undefined> {
-    await sleep(180);
-    tasks = tasks.map((t) => (t.id === id ? { ...t, status } : t));
-    return tasks.find((t) => t.id === id);
+  async updateStatus(token: string | null, id: string, status: TaskStatus): Promise<Task> {
+    const res = await fetch(`${API_URL}/tasks/${id}`, {
+      method: "PATCH",
+      headers: authHeaders(token),
+      body: JSON.stringify({ status }),
+    });
+    return parseResponse<Task>(res, "Failed to update task");
   },
 
-  async update(id: string, patch: Partial<Task>): Promise<Task | undefined> {
-    await sleep(200);
-    tasks = tasks.map((t) => (t.id === id ? { ...t, ...patch } : t));
-    return tasks.find((t) => t.id === id);
+  async update(token: string | null, id: string, patch: Partial<Task>): Promise<Task> {
+    const { title, description, priority, deadline, project, source, status } = patch;
+    const res = await fetch(`${API_URL}/tasks/${id}`, {
+      method: "PATCH",
+      headers: authHeaders(token),
+      body: JSON.stringify({ title, description, priority, deadline, project, source, status }),
+    });
+    return parseResponse<Task>(res, "Failed to update task");
   },
 
-  async remove(id: string): Promise<void> {
-    await sleep(180);
-    tasks = tasks.filter((t) => t.id !== id);
+  async remove(token: string | null, id: string): Promise<void> {
+    const res = await fetch(`${API_URL}/tasks/${id}`, { method: "DELETE", headers: authHeaders(token) });
+    if (!res.ok) {
+      const json = await res.json().catch(() => null);
+      throw new Error(json?.message ?? "Failed to delete task");
+    }
   },
 };
