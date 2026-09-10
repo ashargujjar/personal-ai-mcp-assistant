@@ -6,12 +6,13 @@ import { cn, formatBytes, formatRelativeTime } from "@/lib/utils";
 import type { KnowledgeDocument } from "@/types";
 
 const statusConfig = {
+  uploaded: { label: "Uploaded", variant: "secondary" as const },
   ready: { label: "Ready", variant: "success" as const },
   processing: { label: "Processing", variant: "warning" as const },
   error: { label: "Failed", variant: "destructive" as const },
 };
 
-export function DocumentCard({ doc, onDelete }: { doc: KnowledgeDocument; onDelete: (id: string) => void }) {
+export function DocumentCard({ doc, onDelete, onDownload }: { doc: KnowledgeDocument; onDownload: (id: string) => void; onDelete: (id: string) => void }) {
   const status = statusConfig[doc.status];
   return (
     <Card className="p-4">
@@ -42,13 +43,7 @@ export function DocumentCard({ doc, onDelete }: { doc: KnowledgeDocument; onDele
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-0.5">
-          {doc.fileUrl && (
-            <Button variant="ghost" size="icon-sm" className="text-muted-foreground" asChild aria-label="View document">
-              <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer">
-                <ExternalLink className="h-3.5 w-3.5" />
-              </a>
-            </Button>
-          )}
+          <Button variant="ghost" size="icon-sm" onClick={() => onDownload(doc.id)} aria-label="Download document"><ExternalLink className="h-3.5 w-3.5" /></Button>
           <Button variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-destructive" onClick={() => onDelete(doc.id)} aria-label="Delete document">
             <Trash2 className="h-3.5 w-3.5" />
           </Button>

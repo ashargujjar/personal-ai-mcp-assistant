@@ -26,6 +26,7 @@ model User {
   calendarTokenExpiry  DateTime?
   memories             Memory[]
   tasks                Task[]
+  documents            Document[]
 
   @@map("users")
 }
@@ -65,4 +66,31 @@ model Memory {
   @@unique([userId, key], name: "userId_key_unique")
   @@index([userId])
   @@map("memories")
+}
+
+model Document {
+  id               String   @id @default(cuid())
+  tenantId         String   @map("tenant_id")
+  userId           String   @map("user_id")
+  user             User     @relation(fields: [userId], references: [id])
+  filename         String
+  originalFilename String   @map("original_filename")
+  storageKey       String   @unique @map("storage_key")
+  mimeType         String   @map("mime_type")
+  fileSize         Int      @map("file_size")
+  fileHash         String   @map("file_hash")
+  title            String?
+  author           String?
+  language         String?
+  status           String   @default("uploaded")
+  embeddingModel   String?  @map("embedding_model")
+  parserVersion    String?  @map("parser_version")
+  chunkingVersion  String?  @map("chunking_version")
+  pageCount        Int?     @map("page_count")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId, userId, createdAt])
+  @@index([tenantId, fileHash])
+  @@map("documents")
 }

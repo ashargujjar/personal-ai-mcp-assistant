@@ -1,6 +1,6 @@
 import type { ID } from "./common";
 
-export type DocumentStatus = "processing" | "ready" | "error";
+export type DocumentStatus = "uploaded" | "processing" | "ready" | "error";
 
 export interface KnowledgeDocument {
   id: ID;

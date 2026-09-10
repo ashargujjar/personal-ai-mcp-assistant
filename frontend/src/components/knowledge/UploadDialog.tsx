@@ -1,51 +1,28 @@
-import { FileUp, Upload } from "lucide-react";
+import { Upload } from "lucide-react";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-
-export function UploadDialog({ onUpload }: { onUpload: (filename: string) => void }) {
+export function UploadDialog({ onUpload }: { onUpload: (file: File) => Promise<unknown> }) {
   const [open, setOpen] = React.useState(false);
-  const [filename, setFilename] = React.useState("");
-
-  function handleUpload() {
-    if (!filename.trim()) return;
-    onUpload(filename.trim());
-    setFilename("");
-    setOpen(false);
+  const [file, setFile] = React.useState<File | null>(null);
+  const [pending, setPending] = React.useState(false);
+  const [error, setError] = React.useState("");
+  async function handleUpload() {
+    if (!file || pending) return;
+    setPending(true); setError("");
+    try { await onUpload(file); setFile(null); setOpen(false); }
+    catch (e) { setError(e instanceof Error ? e.message : "Upload failed"); }
+    finally { setPending(false); }
   }
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button size="sm">
-          <Upload className="h-3.5 w-3.5" />
-          Upload
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Upload a document</DialogTitle>
-          <DialogDescription>PDFs and docs are chunked and indexed for retrieval-augmented search.</DialogDescription>
-        </DialogHeader>
-        <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border py-8 text-center">
-          <FileUp className="h-6 w-6 text-muted-foreground" />
-          <p className="text-xs text-muted-foreground">Drag a file here, or enter a filename below</p>
-        </div>
-        <div className="space-y-1.5">
-          <Label>Filename</Label>
-          <Input value={filename} onChange={(e) => setFilename(e.target.value)} placeholder="e.g. Q3 Strategy.pdf" />
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>
-            Cancel
-          </Button>
-          <Button onClick={handleUpload} disabled={!filename.trim()}>
-            Upload
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
+  return <Dialog open={open} onOpenChange={(value) => { if (!pending) { setOpen(value); setFile(null); setError(""); } }}>
+    <DialogTrigger asChild><Button size="sm"><Upload className="h-3.5 w-3.5" />Upload</Button></DialogTrigger>
+    <DialogContent>
+      <DialogHeader><DialogTitle>Upload a PDF</DialogTitle><DialogDescription>Store a PDF securely. Maximum file size: 20 MB.</DialogDescription></DialogHeader>
+      <div className="space-y-2"><Label htmlFor="document-file">PDF file</Label><Input id="document-file" type="file" accept=".pdf,application/pdf" disabled={pending} onChange={(e) => { setFile(e.target.files?.[0] ?? null); setError(""); }} /></div>
+      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+      <DialogFooter><Button variant="outline" disabled={pending} onClick={() => setOpen(false)}>Cancel</Button><Button disabled={!file || pending} onClick={handleUpload}>{pending ? "Uploading..." : "Upload"}</Button></DialogFooter>
+    </DialogContent>
+  </Dialog>;
 }

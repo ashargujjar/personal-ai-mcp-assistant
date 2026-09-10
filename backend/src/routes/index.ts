@@ -1,3 +1,4 @@
+import documentRoutes from "./document.routes";
 import { Router } from "express";
 import authRoutes from "./auth.routes";
 import calendarRoutes from "./calendar.routes";
@@ -18,5 +19,6 @@ router.use("/chat", chatRoutes);
 router.use("/gmail", gmailRoutes);
 router.use("/calendar", calendarRoutes);
 router.use("/tasks", taskRoutes);
+router.use("/documents", documentRoutes);
 
 export default router;
