@@ -108,10 +108,31 @@ services:
       - --loglevel=INFO
       - --concurrency=1
       - --queues=ingestion
+    env_file:
+      - .env
     environment:
       CELERY_BROKER_URL: redis://redis:6379/0
       DATABASE_URL: postgresql://nexus:nexus@postgres:5432/nexus_ai
 
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./fastapi:/app
+  ingestion-dispatcher:
+    build:
+      context: ./fastapi
+      dockerfile: dockerfile
+    restart: unless-stopped
+    command:
+      - python
+      - -m
+      - ingestion.dispatcher
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql://nexus:nexus@postgres:5432/nexus_ai
     depends_on:
       redis:
         condition: service_healthy
