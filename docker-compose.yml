@@ -77,6 +77,49 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+      - --maxmemory-policy
+      - noeviction
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  ingestion-worker:
+    build:
+      context: ./fastapi
+      dockerfile: dockerfile
+    restart: unless-stopped
+    command:
+      - celery
+      - -A
+      - ingestion.celery_app:celery_app
+      - worker
+      - --loglevel=INFO
+      - --concurrency=1
+      - --queues=ingestion
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql://nexus:nexus@postgres:5432/nexus_ai
+
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./fastapi:/app
 
 volumes:
   postgres-data:
+  redis-data:

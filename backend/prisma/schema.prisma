@@ -11,13 +11,13 @@ datasource db {
 }
 
 model User {
-  id                String    @id @default(cuid())
-  name              String
-  email             String    @unique
-  password          String?
-  googleId          String?   @unique
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id                   String     @id @default(cuid())
+  name                 String
+  email                String     @unique
+  password             String?
+  googleId             String?    @unique
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
   gmailAccessToken     String?
   gmailRefreshToken    String?
   gmailTokenExpiry     DateTime?
@@ -68,29 +68,112 @@ model Memory {
   @@map("memories")
 }
 
-model Document {
-  id               String   @id @default(cuid())
-  tenantId         String   @map("tenant_id")
-  userId           String   @map("user_id")
-  user             User     @relation(fields: [userId], references: [id])
+model DocumentVersion {
+  id            String @id @default(cuid())
+  documentId    String @map("document_id")
+  versionNumber Int    @map("version_number")
+
+  storageKey       String @unique @map("storage_key")
   filename         String
-  originalFilename String   @map("original_filename")
-  storageKey       String   @unique @map("storage_key")
-  mimeType         String   @map("mime_type")
-  fileSize         Int      @map("file_size")
-  fileHash         String   @map("file_hash")
-  title            String?
-  author           String?
-  language         String?
-  status           String   @default("uploaded")
-  embeddingModel   String?  @map("embedding_model")
-  parserVersion    String?  @map("parser_version")
-  chunkingVersion  String?  @map("chunking_version")
-  pageCount        Int?     @map("page_count")
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  originalFilename String @map("original_filename")
+  mimeType         String @map("mime_type")
+  fileSize         Int    @map("file_size")
+  fileHash         String @map("file_hash")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  document      Document       @relation(fields: [documentId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  ingestionJobs IngestionJob[]
+
+  @@unique([documentId, versionNumber])
+  @@index([fileHash])
+  @@map("document_versions")
+}
+
+enum IngestionStatus {
+  QUEUED
+  RUNNING
+  RETRY_WAIT
+  SUCCEEDED
+  FAILED
+}
+
+enum IngestionStage {
+  SOURCE_ACCESS
+  PARSING
+  CHUNKING
+  EMBEDDING
+}
+
+model IngestionJob {
+  id                String          @id @default(cuid())
+  documentVersionId String          @map("document_version_id")
+  status            IngestionStatus @default(QUEUED)
+  stage             IngestionStage?
+  // This first pipeline only verifies source access; parsing comes later.
+  pipelineVersion   String          @map("pipeline_version")
+  parserVersion     String?         @map("parser_version")
+  chunkingVersion   String?         @map("chunking_version")
+  embeddingModel    String?         @map("embedding_model")
+  attemptCount      Int             @default(0) @map("attempt_count")
+  maxAttempts       Int             @default(3) @map("max_attempts")
+  claimToken        String?         @map("claim_token")
+  leaseExpiresAt    DateTime?       @map("lease_expires_at")
+  nextAttemptAt     DateTime        @default(now()) @map("next_attempt_at")
+  lastErrorCode     String?         @map("last_error_code")
+  lastErrorMessage  String?         @map("last_error_message")
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+  startedAt         DateTime?       @map("started_at")
+  finishedAt        DateTime?       @map("finished_at")
+
+  documentVersion DocumentVersion @relation(fields: [documentVersionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  outboxEvents    OutboxEvent[]
+
+  @@index([documentVersionId, createdAt])
+  @@index([status, nextAttemptAt])
+  @@index([status, leaseExpiresAt])
+  @@map("ingestion_jobs")
+}
+
+model OutboxEvent {
+  id                   String    @id @default(cuid())
+  ingestionJobId       String    @map("ingestion_job_id")
+  eventType            String    @default("ingestion.requested") @map("event_type")
+  schemaVersion        Int       @default(1) @map("schema_version")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  availableAt          DateTime  @default(now()) @map("available_at")
+  dispatchedAt         DateTime? @map("dispatched_at")
+  dispatchAttemptCount Int       @default(0) @map("dispatch_attempt_count")
+  claimToken           String?   @map("claim_token")
+  leaseExpiresAt       DateTime? @map("lease_expires_at")
+  lastErrorMessage     String?   @map("last_error_message")
+
+  ingestionJob IngestionJob @relation(fields: [ingestionJobId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([ingestionJobId, eventType])
+  @@index([dispatchedAt, availableAt])
+  @@map("outbox_events")
+}
+
+model Document {
+  // document
+  id              String            @id @default(cuid())
+  tenantId        String            @map("tenant_id")
+  userId          String            @map("user_id")
+  user            User              @relation(fields: [userId], references: [id])
+  title           String?
+  author          String?
+  language        String?
+  status          String            @default("uploaded")
+  embeddingModel  String?           @map("embedding_model")
+  parserVersion   String?           @map("parser_version")
+  chunkingVersion String?           @map("chunking_version")
+  pageCount       Int?              @map("page_count")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+  versions        DocumentVersion[]
 
   @@index([tenantId, userId, createdAt])
-  @@index([tenantId, fileHash])
   @@map("documents")
 }
