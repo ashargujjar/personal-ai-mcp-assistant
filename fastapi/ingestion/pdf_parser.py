@@ -1,8 +1,25 @@
+from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
 import re
 import unicodedata
 import pymupdf
+
+
+@dataclass
+class TextSpan:
+    text: str
+    font_name: str
+    font_size: float
+    is_bold: bool
+
+
+@dataclass
+class TextLine:
+    text: str
+    bbox: tuple[float, float, float, float]
+    spans: list[TextSpan]
+    is_heading_candidate: bool = False
 
 
 @dataclass
@@ -12,6 +29,7 @@ class TextBlock:
     text: str
     normalized_text: str
     bbox: tuple[float, float, float, float]
+    lines: list[TextLine]
 
 @dataclass
 class ParsedPDF:
@@ -55,17 +73,42 @@ def extract_pdf(pdf_path: str | Path) -> ParsedPDF:
             raise ValueError("This PDF requires a password")
 
         for page_number, page in enumerate(document, start=1):
-            raw_blocks = page.get_text("blocks", sort=True)
+            # Keep line/span metadata, excluding image bytes from extraction.
+            page_data = page.get_text(
+                "dict",
+                sort=True,
+                flags=pymupdf.TEXTFLAGS_DICT & ~pymupdf.TEXT_PRESERVE_IMAGES,
+            )
             page_blocks = []
 
-            for raw_block in raw_blocks:
-                block_type = raw_block[6]
+            for raw_block in page_data["blocks"]:
+                block_type = raw_block["type"]
 
                 # PyMuPDF uses block type 0 for text.
                 if block_type != 0:
                     continue
 
-                text = raw_block[4]
+                lines = []
+                for raw_line in raw_block["lines"]:
+                    # A line may contain multiple fonts or bold only some words.
+                    spans = [
+                        TextSpan(
+                            text=span["text"],
+                            font_name=span["font"],
+                            font_size=float(span["size"]),
+                            is_bold=bool(span["flags"] & pymupdf.TEXT_FONT_BOLD),
+                        )
+                        for span in raw_line["spans"]
+                    ]
+                    lines.append(
+                        TextLine(
+                            text="".join(span.text for span in spans),
+                            bbox=tuple(float(value) for value in raw_line["bbox"]),
+                            spans=spans,
+                        )
+                    )
+
+                text = "\n".join(line.text for line in lines)
 
                 if not text.strip():
                     continue
@@ -77,8 +120,9 @@ def extract_pdf(pdf_path: str | Path) -> ParsedPDF:
                         text=text,
                         normalized_text=normalize_text(text),
                         bbox=tuple(
-                            float(value) for value in raw_block[:4]
+                            float(value) for value in raw_block["bbox"]
                         ),
+                        lines=lines,
                     )
                 )
 
@@ -98,6 +142,71 @@ def extract_pdf(pdf_path: str | Path) -> ParsedPDF:
 LIST_MARKER = re.compile(
     r"^\s*(?:[-*•▪◦]|\d+[.)]|[A-Za-z][.)])\s+"
 )
+
+
+def estimate_body_font_size(blocks: list[TextBlock]) -> float | None:
+    characters_by_size = Counter()
+
+    for block in blocks:
+        for line in block.lines:
+            for span in line.spans:
+                character_count = sum(
+                    1 for character in span.text
+                    if not character.isspace()
+                )
+
+                if character_count == 0 or span.font_size <= 0:
+                    continue
+
+                # Group tiny differences such as 10.999 and 11.001.
+                font_size = round(span.font_size, 1)
+                characters_by_size[font_size] += character_count
+
+    if not characters_by_size:
+        return None
+
+    return characters_by_size.most_common(1)[0][0]
+
+
+def mark_heading_candidates(
+    blocks: list[TextBlock],
+    body_font_size: float | None,
+) -> None:
+    for block in blocks:
+        for line in block.lines:
+            line.is_heading_candidate = False
+
+            if body_font_size is None:
+                continue
+
+            text = line.text.strip()
+
+            # Initial heuristic: headings are usually relatively short.
+            if not text or len(text) > 120 or len(text.split()) > 16:
+                continue
+
+            characters_by_size = Counter()
+
+            for span in line.spans:
+                character_count = sum(
+                    1 for character in span.text
+                    if not character.isspace()
+                )
+
+                if character_count == 0 or span.font_size <= 0:
+                    continue
+
+                font_size = round(span.font_size, 1)
+                characters_by_size[font_size] += character_count
+
+            if not characters_by_size:
+                continue
+
+            main_font_size = characters_by_size.most_common(1)[0][0]
+
+            line.is_heading_candidate = (
+                main_font_size >= body_font_size * 1.2
+            )
 
 
 def build_text_units(blocks: list[TextBlock]) -> list[TextUnit]:
@@ -170,23 +279,29 @@ def build_text_units(blocks: list[TextBlock]) -> list[TextUnit]:
 if __name__ == "__main__":
     import argparse
     import json
-    from ingestion.chunker import chunk_units
 
     parser = argparse.ArgumentParser(
         description="Extract PDF text blocks with page references"
     )
     parser.add_argument("pdf_path")
     parser.add_argument("--output", required=True)
+    parser.add_argument(
+        "--extract-only",
+        action="store_true",
+        help="Inspect text and font metadata without running the chunker",
+    )
     args = parser.parse_args()
 
     parsed = extract_pdf(args.pdf_path)
+    body_font_size = estimate_body_font_size(parsed.blocks)
+    mark_heading_candidates(parsed.blocks, body_font_size)
     units = build_text_units(parsed.blocks)
-    chunks = chunk_units(
-    units,
-    target_tokens=512,
-    max_tokens=768,
-     )
+    if not args.extract_only:
+        from ingestion.chunker import chunk_units
+
+        chunks = chunk_units(units, target_tokens=512, max_tokens=768)
     payload = asdict(parsed)
+    payload["estimated_body_font_size"] = body_font_size
     payload["units"] = [asdict(unit) for unit in units]
 
     output_path = Path(args.output)
@@ -198,6 +313,7 @@ if __name__ == "__main__":
 
     print(f"Pages: {parsed.page_count}")
     print(f"Text blocks: {len(parsed.blocks)}")
+    print(f"Estimated body font size: {body_font_size}")
     print(f"Pages without text: {parsed.pages_without_text}")
     print(f"Saved extraction to: {output_path}")
     print(f"Text units: {len(units)}")
