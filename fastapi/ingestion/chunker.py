@@ -1,4 +1,6 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+import re
+from collections.abc import Callable
 
 import tiktoken
 
@@ -13,6 +15,63 @@ class Chunk:
     page_start: int
     page_end: int
     source_units: list[dict[str, int]]
+
+
+def split_oversized_unit(
+    unit: TextUnit,
+    max_tokens: int,
+    count_tokens: Callable[[str], int],
+) -> list[TextUnit]:
+    """Split at sentences, then whitespace, then Unicode character boundaries."""
+    if count_tokens(unit.text) <= max_tokens:
+        return [unit]
+
+    def split_long_word(text: str) -> list[str]:
+        if count_tokens(text) <= max_tokens:
+            return [text]
+        if len(text) <= 1:
+            raise ValueError(
+                "max_tokens is too small to hold one Unicode character"
+            )
+        # Splitting Python strings avoids decoding partial UTF-8 token bytes.
+        middle = len(text) // 2
+        return split_long_word(text[:middle]) + split_long_word(text[middle:])
+
+    pieces = []
+    # A lightweight heuristic; abbreviations may also create boundaries.
+    for sentence in re.split(r"(?<=[.!?])(?=\s)", unit.text):
+        if count_tokens(sentence) <= max_tokens:
+            pieces.append(sentence)
+        else:
+            for word in re.findall(r"\S+\s*|\s+", sentence):
+                pieces.extend(split_long_word(word))
+
+    parts = []
+    current = ""
+    for piece in pieces:
+        candidate = current + piece
+        if current and count_tokens(candidate) > max_tokens:
+            parts.append(current)
+            current = piece
+        else:
+            current = candidate
+    if current:
+        parts.append(current)
+
+    # Keep the original source IDs on every fragment. Only the first fragment
+    # of an oversized heading starts a section.
+    return [
+        replace(
+            unit,
+            text=part,
+            layout_hint=(
+                "heading_continuation"
+                if index > 0 and unit.layout_hint == "heading_candidate"
+                else unit.layout_hint
+            ),
+        )
+        for index, part in enumerate(parts)
+    ]
 
 
 def chunk_units(
@@ -65,22 +124,22 @@ def chunk_units(
 
         current_units.clear()
 
-    for unit in units:
+    prepared_units = (
+        fragment
+        for source_unit in units
+        if source_unit.text.strip()
+        for fragment in split_oversized_unit(
+            source_unit, max_tokens, count_tokens
+        )
+    )
+
+    for unit in prepared_units:
         if not unit.text.strip():
             continue
 
-        unit_tokens = count_tokens(unit.text)
-
-        if unit_tokens > max_tokens:
-            raise ValueError(
-                "Oversized text unit: "
-                f"page={unit.page_number}, "
-                f"block={unit.source_block_index}, "
-                f"unit={unit.unit_index}, "
-                f"tokens={unit_tokens}, "
-                f"maximum={max_tokens}. "
-                "Split this unit before packing."
-            )
+        # Each candidate heading starts a new provisional section.
+        if unit.layout_hint == "heading_candidate":
+            flush()
 
         candidate = combined_text([*current_units, unit])
 
@@ -89,7 +148,11 @@ def chunk_units(
 
         current_units.append(unit)
 
-        if count_tokens(combined_text(current_units)) >= target_tokens:
+        # Keep a heading open for the following body unit when it fits.
+        if (
+            unit.layout_hint != "heading_candidate"
+            and count_tokens(combined_text(current_units)) >= target_tokens
+        ):
             flush()
 
     flush()

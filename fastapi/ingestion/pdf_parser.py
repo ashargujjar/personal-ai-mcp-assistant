@@ -213,15 +213,31 @@ def build_text_units(blocks: list[TextBlock]) -> list[TextUnit]:
     units = []
 
     for block in blocks:
-        # Blank lines provide an initial boundary within a block.
-        groups = re.split(
-            r"\n[ \t]*\n",
-            block.normalized_text,
-        )
+        # Preserve heading boundaries before joining ordinary text lines.
+        groups = []
+        body_lines = []
+
+        def flush_body():
+            if body_lines:
+                groups.extend(
+                    (group, False)
+                    for group in re.split(
+                        r"\n[ \t]*\n", normalize_text("\n".join(body_lines))
+                    )
+                )
+                body_lines.clear()
+
+        for line in block.lines:
+            if line.is_heading_candidate and line.text.strip():
+                flush_body()
+                groups.append((normalize_text(line.text), True))
+            else:
+                body_lines.append(line.text)
+        flush_body()
 
         unit_index = 0
 
-        for group in groups:
+        for group, is_heading in groups:
             lines = [
                 line.rstrip(" \t")
                 for line in group.split("\n")
@@ -250,7 +266,10 @@ def build_text_units(blocks: list[TextBlock]) -> list[TextUnit]:
                 for line in lines[:-1]
             )
 
-            if has_list_marker:
+            if is_heading:
+                text = " ".join(line.strip() for line in lines)
+                layout_hint = "heading_candidate"
+            elif has_list_marker:
                 text = "\n".join(lines)
                 layout_hint = "list_candidate"
             elif has_alignment or has_line_end_hyphen:
@@ -303,6 +322,8 @@ if __name__ == "__main__":
     payload = asdict(parsed)
     payload["estimated_body_font_size"] = body_font_size
     payload["units"] = [asdict(unit) for unit in units]
+    if not args.extract_only:
+        payload["chunks"] = [asdict(chunk) for chunk in chunks]
 
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -317,3 +338,6 @@ if __name__ == "__main__":
     print(f"Pages without text: {parsed.pages_without_text}")
     print(f"Saved extraction to: {output_path}")
     print(f"Text units: {len(units)}")
+    print(f"Heading candidates: {sum(unit.layout_hint == 'heading_candidate' for unit in units)}")
+    if not args.extract_only:
+        print(f"Chunks: {len(chunks)}")
