@@ -1,10 +1,12 @@
 from time import monotonic
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from celery.utils.log import get_task_logger
 
 from ingestion.celery_app import celery_app
 from ingestion.db import connect_db
-from ingestion.jobs import claim_job, complete_job, fail_job
+from ingestion.jobs import advance_job_stage, claim_job, complete_job, fail_job
 from ingestion.source import SourceError, verify_source
 
 
@@ -84,13 +86,84 @@ def _run_source_verification(ingestion_job_id, schema_version, started):
         )
         return
 
+    stage = "SOURCE_ACCESS"
     try:
-        verify_source(source, job_id=ingestion_job_id)
-    except SourceError as error:
+        with TemporaryDirectory(prefix="ingestion-") as temp_directory:
+            pdf_path = Path(temp_directory) / "source.pdf"
+
+            with pdf_path.open("wb") as destination:
+                verify_source(
+                    source,
+                    job_id=ingestion_job_id,
+                    destination=destination,
+                )
+
+            logger.info(
+                "source_file_ready job=%s bytes=%s",
+                ingestion_job_id,
+                source["file_size"],
+            )
+
+            if not advance_job_stage(ingestion_job_id, claim_token, "PARSING"):
+                logger.warning("stage_update_rejected job=%s stage=PARSING", ingestion_job_id)
+                return
+            stage = "PARSING"
+            stage_started = monotonic()
+            logger.info("parsing_started job=%s", ingestion_job_id)
+            from ingestion.pdf_parser import (
+                extract_pdf, estimate_body_font_size,
+                mark_heading_candidates, build_text_units,
+            )
+
+            parsed = extract_pdf(pdf_path)
+            body_size = estimate_body_font_size(parsed.blocks)
+            mark_heading_candidates(parsed.blocks, body_size)
+            if not parsed.blocks:
+                raise SourceError("PDF_NO_TEXT", "PDF has no extractable text; OCR is not implemented", False)
+            heading_count = sum(
+                line.is_heading_candidate
+                for block in parsed.blocks for line in block.lines
+            )
+            logger.info(
+                "parsing_completed job=%s pages=%s blocks=%s headings=%s "
+                "pages_without_text=%s elapsed_ms=%d",
+                ingestion_job_id, parsed.page_count, len(parsed.blocks),
+                heading_count, len(parsed.pages_without_text),
+                int((monotonic() - stage_started) * 1000),
+            )
+
+            if not advance_job_stage(ingestion_job_id, claim_token, "CHUNKING"):
+                logger.warning("stage_update_rejected job=%s stage=CHUNKING", ingestion_job_id)
+                return
+            stage = "CHUNKING"
+            stage_started = monotonic()
+            logger.info("chunking_started job=%s", ingestion_job_id)
+            from ingestion.chunker import chunk_units
+
+            units = build_text_units(parsed.blocks)
+            chunks = chunk_units(units, target_tokens=512, max_tokens=768)
+            if not chunks:
+                raise SourceError("NO_CHUNKS", "Extracted text produced no chunks", False)
+            logger.info(
+                "chunking_completed job=%s units=%s chunks=%s tokens=%s "
+                "elapsed_ms=%d persisted=false",
+                ingestion_job_id, len(units), len(chunks),
+                sum(chunk.token_count for chunk in chunks),
+                int((monotonic() - stage_started) * 1000),
+            )
+    except Exception as caught:
+        if isinstance(caught, SourceError):
+            error = caught
+        else:
+            error = SourceError(
+                f"{stage}_ERROR",
+                f"{stage} failed ({type(caught).__name__})",
+                not (stage == "PARSING" and isinstance(caught, ValueError)),
+            )
         logger.warning(
-            "source_verification_failed job=%s stage=SOURCE_ACCESS code=%s "
+            "ingestion_failed job=%s stage=%s code=%s "
             "retryable=%s attempt=%s/%s elapsed_ms=%d",
-            ingestion_job_id, error.code, error.retryable,
+            ingestion_job_id, stage, error.code, error.retryable,
             claimed["attempt_count"], claimed["max_attempts"],
             int((monotonic() - started) * 1000),
         )
@@ -121,7 +194,7 @@ def _run_source_verification(ingestion_job_id, schema_version, started):
 
     if complete_job(ingestion_job_id, claim_token):
         logger.info(
-            "job_succeeded job=%s stage=SOURCE_ACCESS attempt=%s/%s "
+            "job_succeeded job=%s stage=CHUNKING attempt=%s/%s "
             "elapsed_ms=%d document_ready=false",
             ingestion_job_id, claimed["attempt_count"], claimed["max_attempts"],
             int((monotonic() - started) * 1000),

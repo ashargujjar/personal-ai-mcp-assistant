@@ -2,6 +2,7 @@ import hashlib
 import logging
 import os
 import time
+from typing import BinaryIO
 
 import httpx
 from cloudinary.utils import private_download_url
@@ -21,7 +22,12 @@ class SourceError(Exception):
         self.retryable = retryable
 
 
-def verify_source(source: dict, *, job_id: str | None = None) -> None:
+def verify_source(
+    source: dict,
+    *,
+    job_id: str | None = None,
+    destination: BinaryIO | None = None,
+) -> None:
     started = time.monotonic()
     cloud = (
         os.getenv("CLOUDINARY_CLOUD_NAME")
@@ -116,6 +122,9 @@ def verify_source(source: dict, *, job_id: str | None = None) -> None:
                         header += block[:5 - len(header)]
 
                     digest.update(block)
+                    if destination is not None:
+                        destination.write(block)
+
                     percent = received * 100 // expected_size
                     if percent >= next_progress:
                         logger.info(

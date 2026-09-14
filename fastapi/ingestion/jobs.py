@@ -56,6 +56,29 @@ def claim_job(
 
     return claimed_job
 
+def advance_job_stage(job_id: str, claim_token: str, stage: str) -> bool:
+    previous_stage = {"PARSING": "SOURCE_ACCESS", "CHUNKING": "PARSING"}
+    if stage not in previous_stage:
+        raise ValueError("Unsupported stage transition")
+
+    with connect_db() as connection:
+        updated = connection.execute(
+            """
+            UPDATE ingestion_jobs
+            SET stage = %s::"IngestionStage",
+                lease_expires_at = clock_timestamp() + INTERVAL '300 seconds',
+                updated_at = clock_timestamp()
+            WHERE id = %s AND claim_token = %s
+              AND status = 'RUNNING'
+              AND stage = %s::"IngestionStage"
+              AND lease_expires_at > clock_timestamp()
+            RETURNING id
+            """,
+            (stage, job_id, claim_token, previous_stage[stage]),
+        ).fetchone()
+    return updated is not None
+
+
 COMPLETE_JOB_SQL = """
 UPDATE ingestion_jobs
 SET
