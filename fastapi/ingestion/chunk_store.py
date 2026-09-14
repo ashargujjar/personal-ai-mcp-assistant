@@ -35,3 +35,25 @@ def store_chunks(job_id: str, claim_token: str, chunks: list[Any], *, parser_ver
             )
         connection.execute("UPDATE chunk_sets SET status='READY', updated_at=clock_timestamp() WHERE id=%s", (set_id,))
     return True
+
+
+def store_embeddings(job_id: str, claim_token: str, vectors: list[list[float]]) -> bool:
+    with connect_db() as connection:
+        rows = connection.execute(
+            """SELECT cs.id, dc.chunk_index FROM chunk_sets cs
+               JOIN document_versions v ON v.id=cs.document_version_id
+               JOIN ingestion_jobs j ON j.document_version_id=v.id
+               JOIN document_chunks dc ON dc.chunk_set_id=cs.id
+               WHERE j.id=%s AND j.status='RUNNING' AND j.claim_token=%s
+               AND cs.status='READY' ORDER BY dc.chunk_index FOR UPDATE""",
+            (job_id, claim_token),
+        ).fetchall()
+        if len(rows) != len(vectors):
+            return False
+        for row, vector in zip(rows, vectors):
+            value = "[" + ",".join(str(float(item)) for item in vector) + "]"
+            connection.execute(
+                "UPDATE document_chunks SET embedding=%s::vector WHERE chunk_set_id=%s AND chunk_index=%s",
+                (value, row["id"], row["chunk_index"]),
+            )
+    return True

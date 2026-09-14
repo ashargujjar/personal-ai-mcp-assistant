@@ -90,16 +90,16 @@ model ChunkSet {
 }
 
 model DocumentChunk {
-  id          String @id @default(cuid())
-  chunkSetId  String @map("chunk_set_id")
-  chunkIndex  Int    @map("chunk_index")
-  text        String @db.Text
-  tokenCount  Int    @map("token_count")
-  pageStart   Int    @map("page_start")
-  pageEnd     Int    @map("page_end")
-  sourceUnits Json   @map("source_units")
-
-  chunkSet ChunkSet @relation(fields: [chunkSetId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  id          String                       @id @default(cuid())
+  chunkSetId  String                       @map("chunk_set_id")
+  chunkIndex  Int                          @map("chunk_index")
+  text        String                       @db.Text
+  tokenCount  Int                          @map("token_count")
+  pageStart   Int                          @map("page_start")
+  pageEnd     Int                          @map("page_end")
+  sourceUnits Json                         @map("source_units")
+  embedding   Unsupported("vector(1536)")?
+  chunkSet    ChunkSet                     @relation(fields: [chunkSetId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@unique([chunkSetId, chunkIndex])
   @@map("document_chunks")

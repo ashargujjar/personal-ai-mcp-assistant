@@ -155,6 +155,16 @@ def _run_source_verification(ingestion_job_id, schema_version, started):
             if not store_chunks(ingestion_job_id, claim_token, chunks):
                 raise SourceError("CHUNK_STORE_OWNERSHIP_LOST", "Worker no longer owns job", False)
             logger.info("chunks_persisted job=%s chunks=%s", ingestion_job_id, len(chunks))
+            if not advance_job_stage(ingestion_job_id, claim_token, "EMBEDDING"):
+                raise SourceError("EMBEDDING_OWNERSHIP_LOST", "Worker no longer owns job", False)
+            stage = "EMBEDDING"
+            logger.info("embedding_started job=%s chunks=%s", ingestion_job_id, len(chunks))
+            from ingestion.embedding import embed_texts
+            from ingestion.chunk_store import store_embeddings
+            vectors = embed_texts([chunk.text for chunk in chunks])
+            if not store_embeddings(ingestion_job_id, claim_token, vectors):
+                raise SourceError("EMBEDDING_STORE_FAILED", "Could not save embeddings", True)
+            logger.info("embedding_completed job=%s vectors=%s", ingestion_job_id, len(vectors))
     except Exception as caught:
         if isinstance(caught, SourceError):
             error = caught

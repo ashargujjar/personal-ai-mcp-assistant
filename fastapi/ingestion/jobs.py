@@ -57,7 +57,11 @@ def claim_job(
     return claimed_job
 
 def advance_job_stage(job_id: str, claim_token: str, stage: str) -> bool:
-    previous_stage = {"PARSING": "SOURCE_ACCESS", "CHUNKING": "PARSING"}
+    previous_stage = {
+        "PARSING": "SOURCE_ACCESS",
+        "CHUNKING": "PARSING",
+        "EMBEDDING": "CHUNKING",
+    }
     if stage not in previous_stage:
         raise ValueError("Unsupported stage transition")
 
