@@ -146,11 +146,15 @@ def _run_source_verification(ingestion_job_id, schema_version, started):
                 raise SourceError("NO_CHUNKS", "Extracted text produced no chunks", False)
             logger.info(
                 "chunking_completed job=%s units=%s chunks=%s tokens=%s "
-                "elapsed_ms=%d persisted=false",
+                "elapsed_ms=%d persisted=pending",
                 ingestion_job_id, len(units), len(chunks),
                 sum(chunk.token_count for chunk in chunks),
                 int((monotonic() - stage_started) * 1000),
             )
+            from ingestion.chunk_store import store_chunks
+            if not store_chunks(ingestion_job_id, claim_token, chunks):
+                raise SourceError("CHUNK_STORE_OWNERSHIP_LOST", "Worker no longer owns job", False)
+            logger.info("chunks_persisted job=%s chunks=%s", ingestion_job_id, len(chunks))
     except Exception as caught:
         if isinstance(caught, SourceError):
             error = caught

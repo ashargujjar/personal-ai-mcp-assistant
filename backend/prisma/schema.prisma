@@ -68,6 +68,43 @@ model Memory {
   @@map("memories")
 }
 
+enum ChunkSetStatus {
+  BUILDING
+  READY
+}
+
+model ChunkSet {
+  id                String         @id @default(cuid())
+  documentVersionId String         @map("document_version_id")
+  parserVersion     String         @map("parser_version")
+  chunkingVersion   String         @map("chunking_version")
+  status            ChunkSetStatus @default(BUILDING)
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+
+  documentVersion DocumentVersion @relation(fields: [documentVersionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  chunks          DocumentChunk[]
+
+  @@unique([documentVersionId, parserVersion, chunkingVersion])
+  @@map("chunk_sets")
+}
+
+model DocumentChunk {
+  id          String @id @default(cuid())
+  chunkSetId  String @map("chunk_set_id")
+  chunkIndex  Int    @map("chunk_index")
+  text        String @db.Text
+  tokenCount  Int    @map("token_count")
+  pageStart   Int    @map("page_start")
+  pageEnd     Int    @map("page_end")
+  sourceUnits Json   @map("source_units")
+
+  chunkSet ChunkSet @relation(fields: [chunkSetId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([chunkSetId, chunkIndex])
+  @@map("document_chunks")
+}
+
 model DocumentVersion {
   id            String @id @default(cuid())
   documentId    String @map("document_id")
@@ -84,6 +121,7 @@ model DocumentVersion {
 
   document      Document       @relation(fields: [documentId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   ingestionJobs IngestionJob[]
+  chunkSets     ChunkSet[]
 
   @@unique([documentId, versionNumber])
   @@index([fileHash])
