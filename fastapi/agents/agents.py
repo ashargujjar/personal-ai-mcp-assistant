@@ -5,12 +5,12 @@ from langchain.messages import AnyMessage, SystemMessage, ToolMessage
 from langgraph.graph import add_messages
 from langgraph.types import interrupt
 from pydantic import BaseModel, Field
-from prompts.prompts import calendar_system_message, gmail_system_message, system_message,task_system_message
+from prompts.prompts import (calendar_system_message, gmail_system_message, system_message,task_system_message,pdf_system_message)
 
 
 class State(BaseModel):
     messages: Annotated[list[AnyMessage], add_messages]
-    routed_to: Optional[Literal["gmail", "github", "calender", "task"]] = None
+    routed_to: Optional[Literal["gmail", "github", "calender", "task","pdf"]] = None
     summary: str = ""
     timezone: Optional[str] = None
     # Agents that already gave a real (non-blocking) answer this turn — route_guard uses this
@@ -48,6 +48,58 @@ def after_route_guard(state: State) -> str:
     if state.blocked_repeat_agent:
         return "supervisor"
     return state.messages[-1].content
+
+def make_pdf_node(pdf_llm, search_pdf_chunks):
+    def pdf_node(state: State):
+        question = state.messages[-1].content
+
+        retrieved_chunks = search_pdf_chunks(
+            question=question,
+            user_id=None,
+        )
+
+        if not retrieved_chunks:
+            return {
+                "messages": [
+                    SystemMessage(
+                        content=(
+                            "No relevant uploaded-document content was found "
+                            "for this question."
+                        )
+                    )
+                ]
+            }
+
+        context_parts = []
+
+        for chunk in retrieved_chunks:
+            source = (
+                f"[Pages {chunk['page_start']}-{chunk['page_end']}]"
+            )
+            context_parts.append(
+                f"{source}\n{chunk['text']}"
+            )
+
+        context = "\n\n".join(context_parts)
+
+        response = pdf_llm.invoke(
+            [
+                pdf_system_message,
+                SystemMessage(
+                    content=(
+                        "Retrieved document context:\n\n"
+                        f"{context}"
+                    )
+                ),
+                state.messages[-1],
+            ]
+        )
+
+        return {
+            "messages": [response]
+        }
+
+    return pdf_node
 
 
 def make_supervisor_node(llm_with_tools):
@@ -158,5 +210,4 @@ def make_tools_node(tools_by_name, confirm_tools=frozenset(), write_tools=frozen
         return {"messages": outputs, "executed_writes": state.executed_writes + new_writes}
 
     return tools_node
-
 

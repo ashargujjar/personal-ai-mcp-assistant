@@ -15,9 +15,12 @@ from agents.agents import (
     make_gmail_node,
     make_supervisor_node,
     make_task_node,
+    make_pdf_node,
     make_tools_node,
     route_guard,
 )
+from retrieval.vector_search import search_pdf_chunks
+from typing import TypedDict
 
 # tools all bind to supervisor for memory
 llm=ChatDeepSeek(
@@ -25,6 +28,7 @@ llm=ChatDeepSeek(
   api_key=os.environ["DEEPSEEK_KEY"],
   temperature=0.2
 )
+
 checkpointer = MemorySaver()
 
 MAX_MESSAGES_BEFORE_SUMMARY = 20
@@ -34,7 +38,7 @@ def should_summarize(state: State) -> bool:
 
 
 @tool
-def route(agent: Literal["gmail", "github","calender","task"]) -> str:
+def route(agent: Literal["gmail", "github","calender","task","pdf"]) -> str:
     """Hand off the conversation to the given specialist agent."""
     return agent
 
@@ -77,6 +81,7 @@ def build_graph(mcp_tools: list):
     gmail = make_gmail_node(gmail_llm)
     calender = make_calender_node(calender_llm)
     task=make_task_node(task_llm)
+    pdf = make_pdf_node(llm, search_pdf_chunks)
     gmail_tools_node = make_tools_node(gmail_tools_by_name, confirm_tools=CONFIRM_TOOLS, write_tools=GMAIL_WRITE_TOOLS)
     calender_tools_node = make_tools_node(calender_tools_by_name, write_tools=CALENDAR_WRITE_TOOLS)
     task_tools_node = make_tools_node(task_tools_by_name, write_tools=TASK_WRITE_TOOLS)
@@ -125,6 +130,7 @@ def build_graph(mcp_tools: list):
     builder.add_node("summarize",summarize)
     builder.add_node("github", github)
     builder.add_node("task_tools",task_tools_node)
+    builder.add_node("pdf", pdf)
     builder.add_node("supervisor_tools", ToolNode(supervisor_tools))
     builder.add_node("calender_tools",calender_tools_node)
     builder.add_node("gmail_tools", gmail_tools_node)
@@ -135,7 +141,7 @@ def build_graph(mcp_tools: list):
         "supervisor_tools", after_tools, {"route_guard": "route_guard", "supervisor": "supervisor"}
     )
     builder.add_conditional_edges(
-        "route_guard", after_route_guard, {"gmail": "gmail", "github": "github", "calender": "calender", "task": "task", "supervisor": "supervisor"}
+        "route_guard", after_route_guard, {"gmail": "gmail", "github": "github", "calender": "calender", "task": "task","pdf":"pdf", "supervisor": "supervisor"}
     )
     builder.add_conditional_edges("gmail", tools_condition, {"tools": "gmail_tools", END: "supervisor"})
     builder.add_edge("gmail_tools", "gmail")
@@ -144,6 +150,7 @@ def build_graph(mcp_tools: list):
     builder.add_edge("calender_tools","calender")
     builder.add_edge("task_tools", "task")
     builder.add_edge("github", "supervisor")
+    builder.add_edge("pdf", "supervisor")
     builder.add_edge("summarize", END)
 
     return builder.compile(checkpointer=checkpointer)
