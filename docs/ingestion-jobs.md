@@ -11,7 +11,7 @@ The Cloudinary upload happens first and is outside that database transaction. A 
 ## Job fields
 
 - `documentVersionId` identifies the immutable source revision. Ownership is inherited through the version's document, not supplied by a queue caller.
-- `status` starts at `QUEUED`; `stage` starts null. Status values are QUEUED, RUNNING, RETRY_WAIT, SUCCEEDED, FAILED. Stage values are SOURCE_ACCESS, PARSING, CHUNKING, EMBEDDING.
+- `status` starts at `QUEUED`; `stage` starts null. Status values are QUEUED, RUNNING, RETRY_WAIT, SUCCEEDED, FAILED. Stage values are SOURCE_ACCESS, PARSING, METADATA, CHUNKING, EMBEDDING.
 - `pipelineVersion` is explicitly `source-access-v1` for this first implementation. The upcoming worker will only verify access to the source. Its success must not mark the document READY. Future parsing pipelines use new job configurations.
 - `parserVersion`, `chunkingVersion`, and `embeddingModel` remain null until an actual processing configuration is selected. Do not change a job's configuration during retries.
 - `attemptCount` starts at 0; `maxAttempts` is 3 (one initial attempt plus two retries). A successful worker claim will increment the counter; delivery attempts do not.

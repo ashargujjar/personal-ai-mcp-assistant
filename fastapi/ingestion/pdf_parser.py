@@ -1,5 +1,5 @@
 from collections import Counter
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 import re
 import unicodedata
@@ -36,6 +36,7 @@ class ParsedPDF:
     page_count: int
     blocks: list[TextBlock]
     pages_without_text: list[int]
+    metadata: dict[str, str] = field(default_factory=dict)
 
 @dataclass
 class TextUnit:
@@ -135,6 +136,7 @@ def extract_pdf(pdf_path: str | Path) -> ParsedPDF:
             page_count=len(document),
             blocks=blocks,
             pages_without_text=pages_without_text,
+            metadata=dict(document.metadata or {}),
         )
 
     return result

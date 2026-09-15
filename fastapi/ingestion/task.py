@@ -65,7 +65,7 @@ def _run_source_verification(ingestion_job_id, schema_version, started):
     with connect_db() as connection:
         source = connection.execute(
             """
-            SELECT v.storage_key, v.file_size, v.file_hash
+            SELECT v.storage_key, v.file_size, v.file_hash, v.original_filename
             FROM ingestion_jobs j
             JOIN document_versions v
               ON v.id = j.document_version_id
@@ -131,6 +131,19 @@ def _run_source_verification(ingestion_job_id, schema_version, started):
                 heading_count, len(parsed.pages_without_text),
                 int((monotonic() - stage_started) * 1000),
             )
+
+            if not advance_job_stage(ingestion_job_id, claim_token, "METADATA"):
+                logger.warning("stage_update_rejected job=%s stage=METADATA", ingestion_job_id)
+                return
+            stage = "METADATA"
+            logger.info("metadata_extraction_started job=%s", ingestion_job_id)
+            from ingestion.metadata import extract_metadata, store_metadata
+
+            metadata = extract_metadata(parsed, source["original_filename"], job_id=ingestion_job_id)
+            if not store_metadata(ingestion_job_id, claim_token, metadata, parsed.page_count):
+                logger.warning("metadata_store_rejected job=%s reason=ownership_lost", ingestion_job_id)
+                return
+            logger.info("metadata_extracted job=%s keywords_count=%s", ingestion_job_id, len(metadata.keywords))
 
             if not advance_job_stage(ingestion_job_id, claim_token, "CHUNKING"):
                 logger.warning("stage_update_rejected job=%s stage=CHUNKING", ingestion_job_id)

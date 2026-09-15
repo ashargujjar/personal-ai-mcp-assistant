@@ -139,6 +139,7 @@ enum IngestionStatus {
 enum IngestionStage {
   SOURCE_ACCESS
   PARSING
+  METADATA
   CHUNKING
   EMBEDDING
 }
@@ -201,6 +202,8 @@ model Document {
   userId          String            @map("user_id")
   user            User              @relation(fields: [userId], references: [id])
   title           String?
+  shortDescription String?          @map("short_description") @db.Text
+  keywords        Json?
   author          String?
   language        String?
   status          String            @default("uploaded")

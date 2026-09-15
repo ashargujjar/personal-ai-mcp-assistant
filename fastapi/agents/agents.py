@@ -10,6 +10,7 @@ from prompts.prompts import (calendar_system_message, gmail_system_message, syst
 
 class State(BaseModel):
     messages: Annotated[list[AnyMessage], add_messages]
+    user_id: Optional[str] = None
     routed_to: Optional[Literal["gmail", "github", "calender", "task","pdf"]] = None
     summary: str = ""
     timezone: Optional[str] = None
@@ -55,7 +56,7 @@ def make_pdf_node(pdf_llm, search_pdf_chunks):
 
         retrieved_chunks = search_pdf_chunks(
             question=question,
-            user_id=None,
+            user_id=state.user_id,
         )
 
         if not retrieved_chunks:
@@ -74,7 +75,8 @@ def make_pdf_node(pdf_llm, search_pdf_chunks):
 
         for chunk in retrieved_chunks:
             source = (
-                f"[Pages {chunk['page_start']}-{chunk['page_end']}]"
+                f"[Document: {chunk.get('document_title') or 'Untitled PDF'} | "
+                f"Pages {chunk['page_start']}-{chunk['page_end']}]"
             )
             context_parts.append(
                 f"{source}\n{chunk['text']}"
@@ -87,6 +89,8 @@ def make_pdf_node(pdf_llm, search_pdf_chunks):
                 pdf_system_message,
                 SystemMessage(
                     content=(
+                        "The retrieval system selected the most relevant uploaded document "
+                        "using its title, description, keywords, and filename. "
                         "Retrieved document context:\n\n"
                         f"{context}"
                     )
@@ -210,4 +214,3 @@ def make_tools_node(tools_by_name, confirm_tools=frozenset(), write_tools=frozen
         return {"messages": outputs, "executed_writes": state.executed_writes + new_writes}
 
     return tools_node
-

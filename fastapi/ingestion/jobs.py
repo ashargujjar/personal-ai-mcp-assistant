@@ -59,7 +59,8 @@ def claim_job(
 def advance_job_stage(job_id: str, claim_token: str, stage: str) -> bool:
     previous_stage = {
         "PARSING": "SOURCE_ACCESS",
-        "CHUNKING": "PARSING",
+        "METADATA": "PARSING",
+        "CHUNKING": "METADATA",
         "EMBEDDING": "CHUNKING",
     }
     if stage not in previous_stage:

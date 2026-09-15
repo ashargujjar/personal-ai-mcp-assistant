@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 import json
+import jwt
 from typing import Optional
 from langgraph.errors import GraphRecursionError
 from langgraph.types import Command
@@ -14,6 +15,7 @@ from fastapi.responses import StreamingResponse
 from chat import build_graph
 from mcp_client import get_mcp_tools
 from middleware.auth import verify_jwt
+from middleware.auth import JWT_ALGORITHM, JWT_SECRET
 
 app = FastAPI()
 
@@ -32,6 +34,8 @@ def read_root():
 
 @app.post("/chat")
 async def chat(payload: ChatRequest, jwt_token: str = Depends(verify_jwt)):
+    user_id = jwt.decode(jwt_token, JWT_SECRET, algorithms=[JWT_ALGORITHM]).get("sub")
+
     async def event_stream():
         async with get_mcp_tools(jwt_token) as mcp_tools:
             graph = build_graph(mcp_tools)
@@ -40,6 +44,7 @@ async def chat(payload: ChatRequest, jwt_token: str = Depends(verify_jwt)):
                 if payload.resume
                 else {
                     "messages": [HumanMessage(content=payload.message)],
+                    "user_id": user_id,
                     "timezone": payload.timezone,
                     "visited_agents": [],
                     "blocked_repeat_agent": None,
