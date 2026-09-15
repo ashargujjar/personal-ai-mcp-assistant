@@ -4,12 +4,13 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 import json
+import logging
 import jwt
 from typing import Optional
 from langgraph.errors import GraphRecursionError
 from langgraph.types import Command
 from fastapi import Depends, FastAPI
-from langchain.messages import AIMessageChunk, HumanMessage
+from langchain_core.messages import AIMessageChunk, HumanMessage
 from pydantic import BaseModel,Field
 from fastapi.responses import StreamingResponse
 from chat import build_graph
@@ -18,6 +19,7 @@ from middleware.auth import verify_jwt
 from middleware.auth import JWT_ALGORITHM, JWT_SECRET
 
 app = FastAPI()
+logger = logging.getLogger(__name__)
 
 
 class ChatRequest(BaseModel):
@@ -99,6 +101,10 @@ async def chat(payload: ChatRequest, jwt_token: str = Depends(verify_jwt)):
 
             except GraphRecursionError:
                 fallback = "I'm having trouble completing this, can you clarify?"
+                yield f"data: {json.dumps({'type': 'content', 'content': fallback})}\n\n"
+            except Exception:
+                logger.exception("chat_stream_failed")
+                fallback = "I couldn't complete that request right now. Please try again."
                 yield f"data: {json.dumps({'type': 'content', 'content': fallback})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

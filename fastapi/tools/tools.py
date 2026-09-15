@@ -2,7 +2,7 @@ from typing import Annotated, Any
 from langchain.tools import tool
 from pydantic import BaseModel
 from prompts.prompts import gmail_drafter_agent_prompt
-from langchain.messages import HumanMessage
+from langchain_core.messages import HumanMessage
 from langchain_deepseek import ChatDeepSeek
 from langgraph.prebuilt import InjectedState
 import os

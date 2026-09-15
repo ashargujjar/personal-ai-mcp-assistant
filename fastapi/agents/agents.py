@@ -1,7 +1,7 @@
 import json
 from datetime import date
 from typing import Annotated, Literal, Optional
-from langchain.messages import AnyMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage, ToolMessage
 from langgraph.graph import add_messages
 from langgraph.types import interrupt
 from pydantic import BaseModel, Field
@@ -52,7 +52,20 @@ def after_route_guard(state: State) -> str:
 
 def make_pdf_node(pdf_llm, search_pdf_chunks):
     def pdf_node(state: State):
-        question = state.messages[-1].content
+        question_message = next(
+            (message for message in reversed(state.messages)
+             if isinstance(message, HumanMessage)),
+            None,
+        )
+        question = question_message.content if question_message else ""
+        if not isinstance(question, str) or not question.strip():
+            return {
+                "messages": [
+                    SystemMessage(
+                        content="I couldn't identify the document question to answer."
+                    )
+                ]
+            }
 
         retrieved_chunks = search_pdf_chunks(
             question=question,
@@ -95,7 +108,7 @@ def make_pdf_node(pdf_llm, search_pdf_chunks):
                         f"{context}"
                     )
                 ),
-                state.messages[-1],
+                HumanMessage(content=question),
             ]
         )
 

@@ -1,5 +1,5 @@
 import os
-from langchain.messages import SystemMessage, RemoveMessage
+from langchain_core.messages import SystemMessage, RemoveMessage
 from langgraph.graph import StateGraph, START, END
 from langchain_deepseek import ChatDeepSeek
 from typing import Literal
@@ -150,7 +150,9 @@ def build_graph(mcp_tools: list):
     builder.add_edge("calender_tools","calender")
     builder.add_edge("task_tools", "task")
     builder.add_edge("github", "supervisor")
-    builder.add_edge("pdf", "supervisor")
+    # PDF answers already include the retrieved document context. Sending them back through
+    # the supervisor can create a duplicate relay or a second, contradictory route decision.
+    builder.add_edge("pdf", END)
     builder.add_edge("summarize", END)
 
     return builder.compile(checkpointer=checkpointer)
