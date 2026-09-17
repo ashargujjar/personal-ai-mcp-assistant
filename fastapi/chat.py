@@ -7,8 +7,15 @@ from langchain.tools import tool
 from langgraph.prebuilt import ToolNode, tools_condition
 from tools.tools import draft_email, get_current_timezone
 from langgraph.checkpoint.memory import MemorySaver
+from agents.agents import WorkflowPlan
+from agents.routing import (after_calender,after_gmail,after_task,after_pdf)
 from agents.agents import (
     State,
+    gmail_workflow_complete,
+    calender_workflow_complete,
+    task_workflow_complete,
+    get_workflow_task,
+    prepare_next_workflow_task,
     after_route_guard,
     github,
     make_calender_node,
@@ -18,6 +25,7 @@ from agents.agents import (
     make_pdf_node,
     make_tools_node,
     route_guard,
+    make_workflow_finalizer,make_planner_node,route_workflow
 )
 from retrieval.vector_search import search_pdf_chunks
 from typing import TypedDict
@@ -36,6 +44,24 @@ KEEP_LAST_N_RAW = 6
 def should_summarize(state: State) -> bool:
     return len(state.messages) > MAX_MESSAGES_BEFORE_SUMMARY
 
+@tool
+def start_workflow() -> str:
+    """
+    Start a multi-step workflow.
+
+    Use this when the user's request requires:
+    - more than one specialist
+    - dependent steps
+    - conditional logic
+    - output from one specialist being used by another
+
+    Examples:
+    - Check a PDF and if grade is A send an email
+    - Read an email and create a calendar event from it
+    - Check calendar and create tasks for meetings
+    """
+
+    return "workflow"
 
 @tool
 def route(agent: Literal["gmail", "github","calender","task","pdf"]) -> str:
@@ -46,6 +72,8 @@ def after_tools(state: State):
     last_msg = state.messages[-1]        
     if last_msg.name == "route":
         return "route_guard"             # decides whether the chosen agent is actually allowed to run
+    if last_msg.name == "start_workflow":
+        return "planner"
     return "supervisor"
 
 
@@ -66,7 +94,7 @@ def build_graph(mcp_tools: list):
     TASK_TOOLS_NAMES={"list_tasks","get_task","create_task","update_task","delete_task"}
     gmail_tools = [t for t in mcp_tools if t.name in GMAIL_TOOL_NAMES]+[draft_email]
     gmail_tools_by_name = {t.name: t for t in gmail_tools}
-    supervisor_tools = [t for t in mcp_tools if t.name not in GMAIL_TOOL_NAMES and t.name not in CALENDAR_TOOL_NAMES and t.name not in TASK_TOOLS_NAMES] + [route]
+    supervisor_tools = [t for t in mcp_tools if t.name not in GMAIL_TOOL_NAMES and t.name not in CALENDAR_TOOL_NAMES and t.name not in TASK_TOOLS_NAMES] + [route,start_workflow]
     calender_tools=[t for t in mcp_tools if t.name  in CALENDAR_TOOL_NAMES ] + [get_current_timezone]
     calender_tools_by_name = {t.name: t for t in calender_tools}
     task_tools=[t for t in mcp_tools if t.name in TASK_TOOLS_NAMES]
@@ -76,12 +104,16 @@ def build_graph(mcp_tools: list):
     gmail_llm = llm.bind_tools(gmail_tools)
     calender_llm = llm.bind_tools(calender_tools)
     task_llm=llm.bind_tools(task_tools)
+    planner_llm=llm.with_structured_output(WorkflowPlan)
 
     supervisor = make_supervisor_node(llm_with_tools)
     gmail = make_gmail_node(gmail_llm)
     calender = make_calender_node(calender_llm)
     task=make_task_node(task_llm)
     pdf = make_pdf_node(llm, search_pdf_chunks)
+    planner = make_planner_node(planner_llm)
+
+    workflow_finalizer = (make_workflow_finalizer( llm))
     gmail_tools_node = make_tools_node(gmail_tools_by_name, confirm_tools=CONFIRM_TOOLS, write_tools=GMAIL_WRITE_TOOLS)
     calender_tools_node = make_tools_node(calender_tools_by_name, write_tools=CALENDAR_WRITE_TOOLS)
     task_tools_node = make_tools_node(task_tools_by_name, write_tools=TASK_WRITE_TOOLS)
@@ -135,24 +167,45 @@ def build_graph(mcp_tools: list):
     builder.add_node("calender_tools",calender_tools_node)
     builder.add_node("gmail_tools", gmail_tools_node)
     builder.add_node("route_guard", route_guard)
+    builder.add_node("planner",planner)
+    builder.add_node("workflow_prepare", prepare_next_workflow_task)
+    builder.add_node("workflow_complete",workflow_finalizer)
+    builder.add_node("gmail_workflow_complete", gmail_workflow_complete)
+    builder.add_node("calender_workflow_complete", calender_workflow_complete)
+    builder.add_node("task_workflow_complete", task_workflow_complete)
+
+    #  nodes end 
+    
     builder.add_edge(START, "supervisor")
     builder.add_conditional_edges("supervisor", after_supervisor, {"tools": "supervisor_tools", "summarize": "summarize", END: END})
-    builder.add_conditional_edges(
-        "supervisor_tools", after_tools, {"route_guard": "route_guard", "supervisor": "supervisor"}
-    )
+    builder.add_conditional_edges( "supervisor_tools", after_tools, { "route_guard":"route_guard","planner":"planner","supervisor":"supervisor",})
     builder.add_conditional_edges(
         "route_guard", after_route_guard, {"gmail": "gmail", "github": "github", "calender": "calender", "task": "task","pdf":"pdf", "supervisor": "supervisor"}
     )
-    builder.add_conditional_edges("gmail", tools_condition, {"tools": "gmail_tools", END: "supervisor"})
+    builder.add_conditional_edges("gmail", after_gmail, { "tools":"gmail_tools","workflow_complete_task":"gmail_workflow_complete","supervisor":"supervisor",})
     builder.add_edge("gmail_tools", "gmail")
-    builder.add_conditional_edges("task",tools_condition,{"tools":"task_tools",END:"supervisor"})
-    builder.add_conditional_edges("calender",tools_condition,{"tools":"calender_tools",END:"supervisor"})
+    builder.add_conditional_edges("task",after_task,{"tools":"task_tools","workflow_complete_task":"task_workflow_complete","supervisor":"supervisor"})
+    builder.add_conditional_edges("calender",after_calender,{"tools":"calender_tools","workflow_complete_task":"calender_workflow_complete","supervisor":"supervisor"})
+    builder.add_conditional_edges("pdf", after_pdf,{"workflow":"workflow_prepare","end":END,})
+    builder.add_conditional_edges(
+    "workflow_prepare",
+    route_workflow,
+    {
+        "gmail": "gmail",
+        "github": "github",
+        "calender": "calender",
+        "task": "task",
+        "pdf": "pdf",
+        "complete": "workflow_complete",
+    },
+)
     builder.add_edge("calender_tools","calender")
     builder.add_edge("task_tools", "task")
     builder.add_edge("github", "supervisor")
-    # PDF answers already include the retrieved document context. Sending them back through
-    # the supervisor can create a duplicate relay or a second, contradictory route decision.
-    builder.add_edge("pdf", END)
+    builder.add_edge("planner", "workflow_prepare")
+    builder.add_edge( "gmail_workflow_complete","workflow_prepare")
+    builder.add_edge("calender_workflow_complete","workflow_prepare")
+    builder.add_edge("task_workflow_complete","workflow_prepare")
+    builder.add_edge("workflow_complete", END)
     builder.add_edge("summarize", END)
-
     return builder.compile(checkpointer=checkpointer)
