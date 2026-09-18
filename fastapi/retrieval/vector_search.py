@@ -1,10 +1,97 @@
 import os
 import re
-
+from retrieval.query_generation import generate_queries
 from ingestion.db import connect_db
 
 
 TOKEN_RE = re.compile(r"[a-z0-9][a-z0-9_-]*", re.IGNORECASE)
+
+
+def _vector_literal(vector: list[float]) -> str:
+    return "[" + ",".join(str(float(value)) for value in vector) + "]"
+
+
+def _chunk_key(row: dict) -> tuple:
+    return (
+        row["document_id"],
+        row["page_start"],
+        row["page_end"],
+        row["text"],
+    )
+
+
+def _rrf_merge(result_lists: list[list[dict]], limit: int) -> list[dict]:
+    merged = {}
+
+    for results in result_lists:
+        for rank, row in enumerate(results, start=1):
+            key = _chunk_key(row)
+
+            if key not in merged:
+                merged[key] = {
+                    **row,
+                    "rrf_score": 0.0,
+                    "matched_queries": 0,
+                    "best_similarity": row.get("similarity", 0),
+                }
+
+            merged[key]["rrf_score"] += 1 / (60 + rank)
+            merged[key]["matched_queries"] += 1
+            merged[key]["best_similarity"] = max(
+                merged[key]["best_similarity"],
+                row.get("similarity", 0),
+            )
+
+    ranked = sorted(
+        merged.values(),
+        key=lambda row: row["rrf_score"],
+        reverse=True,
+    )
+
+    return ranked[:limit]
+
+
+def _search_chunks_for_vector(
+    vector: str,
+    user_id: str | None = None,
+    selected_document_id: str | None = None,
+    limit: int = 5,
+) -> list[dict]:
+    filters = [
+        "cs.status='READY'",
+        "dc.embedding IS NOT NULL",
+    ]
+    params = [vector]
+
+    if user_id:
+        filters.append("d.user_id=%s")
+        params.append(user_id)
+
+    if selected_document_id:
+        filters.append("d.id=%s")
+        params.append(selected_document_id)
+
+    params.extend([vector, limit])
+
+    sql = f"""
+        SELECT dc.text, dc.page_start, dc.page_end, d.id AS document_id,
+               d.title AS document_title, d.short_description AS document_description,
+               d.keywords AS document_keywords,
+               1 - (dc.embedding <=> %s::vector) AS similarity
+        FROM document_chunks dc
+        JOIN chunk_sets cs ON cs.id=dc.chunk_set_id
+        JOIN document_versions dv ON dv.id=cs.document_version_id
+        JOIN documents d ON d.id=dv.document_id
+        WHERE {" AND ".join(filters)}
+        ORDER BY dc.embedding <=> %s::vector
+        LIMIT %s
+    """
+
+    with connect_db() as connection:
+        return [
+            dict(row)
+            for row in connection.execute(sql, params).fetchall()
+        ]
 
 
 def _query_terms(question: str) -> list[str]:
@@ -75,49 +162,49 @@ def choose_document(question: str, user_id: str | None = None) -> dict | None:
     return None
 
 
-def search_pdf_chunks(question: str, user_id: str | None = None, limit: int = 5) -> list[dict]:
+def search_pdf_chunks(
+    question: str,
+    user_id: str | None = None,
+    limit: int = 5,
+) -> list[dict]:
     if not question.strip():
         return []
+
     selected_document = choose_document(question, user_id=user_id)
+
     from langchain_openai import OpenAIEmbeddings
 
     embedder = OpenAIEmbeddings(
         model=os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"),
         dimensions=1536,
     )
-    vector = "[" + ",".join(str(float(v)) for v in embedder.embed_query(question)) + "]"
-    document_filter = ""
-    params = []
-    if user_id:
-        params.append(user_id)
-    if selected_document:
-        document_filter = " AND d.id=%s"
-        params.append(selected_document["id"])
 
-    if user_id:
-        sql = """SELECT dc.text, dc.page_start, dc.page_end, d.id AS document_id,
-                         d.title AS document_title, d.short_description AS document_description,
-                         d.keywords AS document_keywords,
-                         1 - (dc.embedding <=> %s::vector) AS similarity
-                  FROM document_chunks dc JOIN chunk_sets cs ON cs.id=dc.chunk_set_id
-                  JOIN document_versions dv ON dv.id=cs.document_version_id
-                  JOIN documents d ON d.id=dv.document_id
-                  WHERE cs.status='READY' AND dc.embedding IS NOT NULL AND d.user_id=%s""" + document_filter + """
-                  ORDER BY dc.embedding <=> %s::vector LIMIT %s"""
-        params = (vector, *params, vector, limit)
-    else:
-        sql = """SELECT dc.text, dc.page_start, dc.page_end, d.id AS document_id,
-                         d.title AS document_title, d.short_description AS document_description,
-                         d.keywords AS document_keywords,
-                         1 - (dc.embedding <=> %s::vector) AS similarity
-                  FROM document_chunks dc JOIN chunk_sets cs ON cs.id=dc.chunk_set_id
-                  JOIN document_versions dv ON dv.id=cs.document_version_id
-                  JOIN documents d ON d.id=dv.document_id
-                  WHERE cs.status='READY' AND dc.embedding IS NOT NULL""" + document_filter + """
-                  ORDER BY dc.embedding <=> %s::vector LIMIT %s"""
-        params = (vector, *params, vector, limit)
-    with connect_db() as connection:
-        rows = [dict(row) for row in connection.execute(sql, params).fetchall()]
+    try:
+        queries = generate_queries(question, number_of_queries=4)
+    except Exception:
+        queries = [question.strip()]
+
+    if not queries:
+        queries = [question.strip()]
+
+    query_vectors = embedder.embed_documents(queries)
+    result_lists = []
+
+    for query_vector in query_vectors:
+        rows = _search_chunks_for_vector(
+            vector=_vector_literal(query_vector),
+            user_id=user_id,
+            # Search all of the user's documents. Metadata selection is
+            # retained as context, but is not a hard retrieval filter.
+            selected_document_id=None,
+            limit=limit,
+        )
+        result_lists.append(rows)
+
+    rows = _rrf_merge(result_lists, limit=limit)
+
     for row in rows:
         row["selected_document"] = selected_document
+        row["retrieval_queries"] = queries
+
     return rows

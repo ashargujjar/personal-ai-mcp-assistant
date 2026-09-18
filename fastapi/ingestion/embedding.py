@@ -2,7 +2,6 @@ import os
 
 from langchain_openai import OpenAIEmbeddings
 
-
 def embed_texts(texts: list[str]) -> list[list[float]]:
     if not texts:
         return []
@@ -16,7 +15,6 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
         ),
         dimensions=1536,
     )
-
     vectors = embedder.embed_documents(texts)
     if len(vectors) != len(texts) or any(len(vector) != 1536 for vector in vectors):
         raise RuntimeError("Embedding response has an unexpected shape")
