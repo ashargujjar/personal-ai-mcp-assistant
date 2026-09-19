@@ -7,11 +7,12 @@ import {
   gmailCallback,
   gmailStatus,
   listMessages,
+  searchMessages,
   sendMessage,
 } from "../controllers/gmail.controller";
 import { requireAuth } from "../middleware/requireAuth";
 import { validate } from "../middleware/validate";
-import { messageIdParamSchema, sendMessageSchema } from "../schema/gmail.schema";
+import { messageIdParamSchema, searchMessagesSchema, sendMessageSchema } from "../schema/gmail.schema";
 
 const router = Router();
 
@@ -24,6 +25,7 @@ router.get("/status", gmailStatus);
 router.get("/connect", connectGmail);
 router.delete("/disconnect", disconnectGmail);
 router.get("/messages", listMessages);
+router.get("/messages/search", validate(searchMessagesSchema), searchMessages);
 router.get("/messages/:id", validate(messageIdParamSchema), getMessage);
 router.post("/send", validate(sendMessageSchema), sendMessage);
 router.delete("/messages/:id", validate(messageIdParamSchema), deleteMessage);

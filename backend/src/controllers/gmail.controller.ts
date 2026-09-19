@@ -2,7 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import { google } from "googleapis";
 import jwt from "jsonwebtoken";
 import { AppError } from "../middleware/errorHandler";
-import type { SendMessageInput } from "@/schema/gmail.schema";
+import type { SearchMessagesInput, SendMessageInput } from "@/schema/gmail.schema";
 import { prisma } from "@/db/connect";
 const GMAIL_SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
@@ -189,6 +189,76 @@ export async function listMessages(
     );
 
     res.json({ data: messages });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function searchMessages(
+  req: Request<unknown, unknown, unknown, SearchMessagesInput>,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    if (!req.user) throw new AppError("Authentication required", 401);
+    const gmail = await getGmailClientForUser(req.user.id);
+    const { dateFrom, dateTo, subject, maxResults } = req.query;
+    const queryParts = ["has:attachment", "filename:pdf"];
+
+    if (dateFrom) queryParts.push(`after:${dateFrom.replaceAll("-", "/")}`);
+    if (dateTo) {
+      const exclusiveEnd = new Date(`${dateTo}T00:00:00Z`);
+      exclusiveEnd.setUTCDate(exclusiveEnd.getUTCDate() + 1);
+      queryParts.push(`before:${exclusiveEnd.toISOString().slice(0, 10).replaceAll("-", "/")}`);
+    }
+    if (subject) {
+      const subjectTerms = subject
+        .replaceAll('"', "")
+        .split(/\s+/)
+        .map((term) => term.trim())
+        .filter(Boolean);
+
+      if (subjectTerms.length > 0) {
+        queryParts.push(`subject:(${subjectTerms.join(" ")})`);
+      }
+    }
+
+    const list = await gmail.users.messages.list({
+      userId: "me",
+      q: queryParts.join(" "),
+      maxResults,
+    });
+
+    const messages = await Promise.all(
+      (list.data.messages ?? []).map(async (message) => {
+        const detail = await gmail.users.messages.get({
+          userId: "me",
+          id: message.id!,
+          format: "metadata",
+          metadataHeaders: ["From", "To", "Subject", "Date"],
+        });
+        const headers = detail.data.payload?.headers ?? [];
+        const header = (name: string) =>
+          headers.find((item) => item.name?.toLowerCase() === name.toLowerCase())?.value ?? "";
+
+        return {
+          id: detail.data.id,
+          threadId: detail.data.threadId,
+          from: header("From"),
+          to: header("To"),
+          subject: header("Subject"),
+          date: header("Date"),
+          snippet: detail.data.snippet ?? "",
+        };
+      }),
+    );
+
+    res.json({
+      data: {
+        query: queryParts.join(" "),
+        messages,
+      },
+    });
   } catch (err) {
     next(err);
   }

@@ -22,3 +22,16 @@ export interface AtsResult {
   strengths: string[];
   gaps: string[];
 }
+
+export interface ResumeSearch {
+  id: ID;
+  jobTitle: string;
+  description?: string;
+  dateFrom: string;
+  dateTo: string;
+  fetchedAt: string;
+  submissions: ResumeSubmission[];
+  results: AtsResult[];
+  status: "queued" | "searching" | "downloading" | "ready" | "failed";
+  error?: string;
+}

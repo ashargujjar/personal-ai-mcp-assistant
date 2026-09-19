@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { Award, ExternalLink, GraduationCap, Inbox, Mail, ScanSearch, Sparkles } from "lucide-react";
+import { Award, Clock3, ExternalLink, GraduationCap, Inbox, Mail, ScanSearch, Sparkles, Trash2 } from "lucide-react";
 import * as React from "react";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -15,9 +15,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { formatDate, initials } from "@/lib/utils";
 import { resumeService } from "@/services/resumeService";
-import type { AtsResult, ResumeSubmission } from "@/types";
+import type { AtsResult, ResumeSearch, ResumeSubmission } from "@/types";
 
 const TODAY = "2026-08-22";
+
 function daysAgo(n: number) {
   const d = new Date(`${TODAY}T00:00:00`);
   d.setDate(d.getDate() - n);
@@ -25,48 +26,130 @@ function daysAgo(n: number) {
 }
 
 export default function ResumeScreening() {
-  const [jobTitle, setJobTitle] = React.useState("Senior Backend Engineer");
+  const [jobTitle, setJobTitle] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [dateFrom, setDateFrom] = React.useState(daysAgo(21));
   const [dateTo, setDateTo] = React.useState(TODAY);
   const [tab, setTab] = React.useState("inbox");
+  const [savedSearches, setSavedSearches] = React.useState<ResumeSearch[]>([]);
+  const [selectedSearchId, setSelectedSearchId] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    const saved = resumeService.getSavedSearches();
+    setSavedSearches(saved);
+    setSelectedSearchId(saved[0]?.id ?? null);
+  }, []);
+
+  const selectedSearch = savedSearches.find((search) => search.id === selectedSearchId);
+  const submissions = selectedSearch?.submissions ?? [];
+  const results = selectedSearch?.results ?? [];
 
   const fetchMutation = useMutation({
-    mutationFn: () => resumeService.fetchFromGmail({ dateFrom, dateTo, jobTitle, description: description.trim() || undefined }),
-    onSuccess: () => setTab("inbox"),
+    mutationFn: async (searchId: string) => {
+      resumeService.updateSearch(searchId, { status: "searching", error: undefined });
+      setSavedSearches(resumeService.getSavedSearches());
+      const fetchedSubmissions = await resumeService.fetchFromGmail({
+        dateFrom,
+        dateTo,
+        jobTitle,
+        description: description.trim() || undefined,
+      }, (status) => {
+        resumeService.updateSearch(searchId, { status });
+        setSavedSearches(resumeService.getSavedSearches());
+      });
+      resumeService.updateSearch(searchId, {
+        submissions: fetchedSubmissions,
+        status: "ready",
+      });
+      return fetchedSubmissions;
+    },
+    onSuccess: () => {
+      setSavedSearches(resumeService.getSavedSearches());
+      setTab("inbox");
+      setJobTitle("");
+      setDescription("");
+    },
+    onError: (error, searchId) => {
+      resumeService.updateSearch(searchId, {
+        status: "failed",
+        error: error instanceof Error ? error.message : "Resume search failed.",
+      });
+      setSavedSearches(resumeService.getSavedSearches());
+    },
   });
 
   const scanMutation = useMutation({
-    mutationFn: () => resumeService.runAtsScan(fetchMutation.data ?? []),
-    onSuccess: () => setTab("results"),
+    mutationFn: () => resumeService.runAtsScan(submissions),
+    onSuccess: (scanResults) => {
+      if (!selectedSearchId) return;
+      resumeService.updateSearch(selectedSearchId, { results: scanResults });
+      setSavedSearches(resumeService.getSavedSearches());
+      setTab("results");
+    },
   });
 
-  const submissions = fetchMutation.data ?? [];
-  const results = scanMutation.data ?? [];
+  function openSavedSearch(search: ResumeSearch) {
+    setSelectedSearchId(search.id);
+    fetchMutation.reset();
+    scanMutation.reset();
+    setTab(search.results.length > 0 ? "results" : "inbox");
+  }
+
+  function removeSavedSearch(id: string) {
+    resumeService.deleteSearch(id);
+    const remaining = resumeService.getSavedSearches();
+    setSavedSearches(remaining);
+    if (selectedSearchId === id) {
+      setSelectedSearchId(remaining[0]?.id ?? null);
+      setTab(remaining[0]?.results.length ? "results" : "inbox");
+    }
+  }
+
+  function createSearch() {
+    const saved = resumeService.saveSearch({
+      jobTitle,
+      description: description.trim() || undefined,
+      dateFrom,
+      dateTo,
+      submissions: [],
+      results: [],
+      status: "queued",
+    });
+    setSavedSearches(resumeService.getSavedSearches());
+    setSelectedSearchId(saved.id);
+    setTab("inbox");
+    fetchMutation.mutate(saved.id);
+  }
+
+  function statusLabel(status: ResumeSearch["status"]) {
+    if (status === "queued") return "Queued";
+    if (status === "searching") return "Searching Gmail";
+    if (status === "downloading") return "Downloading CVs";
+    if (status === "failed") return "Failed";
+    return "Ready";
+  }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 p-4 sm:p-6">
+    <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6">
       <PageHeader title="Resume Screening" subtitle="Pull resumes from your inbox for a date range and screen them with AI." />
 
       <Card>
         <CardHeader>
-          <CardTitle>Search criteria</CardTitle>
+          <CardTitle>New resume search</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_180px_180px]">
             <div className="space-y-1.5">
               <Label>Job title</Label>
               <Input value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} placeholder="e.g. Senior Backend Engineer" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>From</Label>
-                <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} max={dateTo} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>To</Label>
-                <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} min={dateFrom} max={TODAY} />
-              </div>
+            <div className="space-y-1.5">
+              <Label>From</Label>
+              <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} max={dateTo} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>To</Label>
+              <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} min={dateFrom} max={TODAY} />
             </div>
           </div>
           <div className="space-y-1.5">
@@ -79,67 +162,128 @@ export default function ResumeScreening() {
             />
           </div>
           <div className="flex justify-end">
-            <Button onClick={() => fetchMutation.mutate()} disabled={!jobTitle.trim() || fetchMutation.isPending}>
+            <Button onClick={createSearch} disabled={!jobTitle.trim() || fetchMutation.isPending}>
               <Mail className="h-3.5 w-3.5" />
-              {fetchMutation.isPending ? "Fetching from Gmail..." : "Fetch Resumes"}
+              {fetchMutation.isPending ? "Adding search..." : "Fetch Resumes"}
             </Button>
           </div>
         </CardContent>
       </Card>
 
-      {(fetchMutation.isPending || fetchMutation.isSuccess) && (
-        <Tabs value={tab} onValueChange={setTab}>
-          <div className="flex items-center justify-between">
-            <TabsList>
-              <TabsTrigger value="inbox">Fetched ({submissions.length})</TabsTrigger>
-              <TabsTrigger value="results">Results ({results.length})</TabsTrigger>
-            </TabsList>
-            {submissions.length > 0 && (
-              <Button variant="outline" size="sm" onClick={() => scanMutation.mutate()} disabled={scanMutation.isPending}>
-                <ScanSearch className="h-3.5 w-3.5" />
-                {scanMutation.isPending ? "Running ATS scan..." : "Run ATS Scan"}
-              </Button>
-            )}
-          </div>
-
-          <TabsContent value="inbox" className="mt-4 space-y-2">
-            {fetchMutation.isPending ? (
-              [1, 2, 3].map((i) => <Skeleton key={i} className="h-20 w-full" />)
-            ) : submissions.length === 0 ? (
-              <EmptyState icon={Inbox} title="No resumes found" description="Try widening the date range." />
+      <div className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
+        <Card className="h-fit">
+          <CardHeader className="pb-3">
+            <CardTitle>Search queue</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {savedSearches.length === 0 ? (
+              <p className="text-sm text-muted-foreground">New searches will appear here.</p>
             ) : (
-              submissions.map((s) => <SubmissionRow key={s.id} submission={s} />)
+              savedSearches.map((search) => (
+                <div
+                  key={search.id}
+                  className={`flex items-start gap-2 rounded-lg border p-2.5 ${
+                    selectedSearchId === search.id ? "border-primary bg-primary/5" : "border-border"
+                  }`}
+                >
+                  <button type="button" className="min-w-0 flex-1 text-left" onClick={() => openSavedSearch(search)}>
+                    <p className="truncate text-sm font-medium">{search.jobTitle}</p>
+                    <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                      <Clock3 className="h-3 w-3" />
+                      {formatDate(search.fetchedAt)} · {search.submissions.length} CVs
+                    </p>
+                    <p className={`mt-1 text-xs ${search.status === "failed" ? "text-destructive" : "text-muted-foreground"}`}>
+                      {statusLabel(search.status)}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {search.dateFrom} to {search.dateTo}
+                    </p>
+                  </button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={`Delete ${search.jobTitle} search`}
+                    onClick={() => removeSavedSearch(search.id)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))
             )}
-          </TabsContent>
+          </CardContent>
+        </Card>
 
-          <TabsContent value="results" className="mt-4 space-y-3">
-            {scanMutation.isPending ? (
-              [1, 2, 3].map((i) => <Skeleton key={i} className="h-32 w-full" />)
-            ) : results.length === 0 ? (
-              <EmptyState
-                icon={ScanSearch}
-                title="No results yet"
-                description="Run an ATS scan on the fetched resumes to see ranked matches."
-              />
-            ) : (
-              <>
-                <div className="flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/[0.05] p-3 text-sm">
-                  <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
-                  <p>
-                    Ranked against <span className="font-medium">{jobTitle}</span>
-                    {description.trim() && <span className="text-muted-foreground"> — {description.trim()}</span>}
+        <div className="min-w-0">
+          {!selectedSearch ? (
+            <EmptyState icon={Inbox} title="No search selected" description="Create a resume search above to add it to the queue." />
+          ) : (
+            <div className="space-y-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold">{selectedSearch.jobTitle}</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Fetched {formatDate(selectedSearch.fetchedAt)} · {selectedSearch.dateFrom} to {selectedSearch.dateTo}
                   </p>
                 </div>
-                {results.map((r, i) => {
-                  const submission = submissions.find((s) => s.id === r.submissionId);
-                  if (!submission) return null;
-                  return <ResultCard key={r.submissionId} rank={i + 1} submission={submission} result={r} />;
-                })}
-              </>
-            )}
-          </TabsContent>
-        </Tabs>
-      )}
+                {submissions.length > 0 && (
+                  <Button variant="outline" size="sm" onClick={() => scanMutation.mutate()} disabled={scanMutation.isPending}>
+                    <ScanSearch className="h-3.5 w-3.5" />
+                    {scanMutation.isPending ? "Running ATS scan..." : "Run ATS Scan"}
+                  </Button>
+                )}
+              </div>
+
+              {selectedSearch.status !== "ready" && (
+                <div className={`rounded-lg border p-3 text-sm ${selectedSearch.status === "failed" ? "border-destructive/30 text-destructive" : "border-primary/20 text-muted-foreground"}`}>
+                  <p className="font-medium">{statusLabel(selectedSearch.status)}</p>
+                  <p className="mt-1">
+                    {selectedSearch.error ?? "This search is still being processed. The CV list will appear when email and PDF downloading is complete."}
+                  </p>
+                </div>
+              )}
+
+              <Tabs value={tab} onValueChange={setTab}>
+                <TabsList>
+                  <TabsTrigger value="inbox">Fetched ({submissions.length})</TabsTrigger>
+                  <TabsTrigger value="results">Results ({results.length})</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="inbox" className="mt-4 space-y-2">
+                  {submissions.length === 0 ? (
+                    <EmptyState icon={Inbox} title="No resumes found" description="Try widening the date range." />
+                  ) : (
+                    submissions.map((submission) => <SubmissionRow key={submission.id} submission={submission} />)
+                  )}
+                </TabsContent>
+
+                <TabsContent value="results" className="mt-4 space-y-3">
+                  {scanMutation.isPending ? (
+                    [1, 2, 3].map((i) => <Skeleton key={i} className="h-32 w-full" />)
+                  ) : results.length === 0 ? (
+                    <EmptyState icon={ScanSearch} title="No results yet" description="Run an ATS scan on the fetched resumes." />
+                  ) : (
+                    <>
+                      <div className="flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/[0.05] p-3 text-sm">
+                        <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                        <p>
+                          Ranked against <span className="font-medium">{selectedSearch.jobTitle}</span>
+                          {selectedSearch.description && <span className="text-muted-foreground"> · {selectedSearch.description}</span>}
+                        </p>
+                      </div>
+                      {results.map((result, index) => {
+                        const submission = submissions.find((item) => item.id === result.submissionId);
+                        return submission ? (
+                          <ResultCard key={result.submissionId} rank={index + 1} submission={submission} result={result} />
+                        ) : null;
+                      })}
+                    </>
+                  )}
+                </TabsContent>
+              </Tabs>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -196,7 +340,6 @@ function ResultCard({ rank, submission, result }: { rank: number; submission: Re
       </div>
 
       <Progress value={result.matchScore} className="mt-3" />
-
       <p className="mt-3 text-sm text-muted-foreground">{result.experienceSummary}</p>
 
       <div className="mt-3 flex flex-wrap gap-1.5">
@@ -211,10 +354,10 @@ function ResultCard({ rank, submission, result }: { rank: number; submission: Re
         <div>
           <p className="mb-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">Strengths</p>
           <ul className="space-y-1 text-xs">
-            {result.strengths.map((s) => (
-              <li key={s} className="flex gap-1.5">
+            {result.strengths.map((strength) => (
+              <li key={strength} className="flex gap-1.5">
                 <span className="text-success">+</span>
-                {s}
+                {strength}
               </li>
             ))}
           </ul>
@@ -222,10 +365,10 @@ function ResultCard({ rank, submission, result }: { rank: number; submission: Re
         <div>
           <p className="mb-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">Gaps</p>
           <ul className="space-y-1 text-xs">
-            {result.gaps.map((g) => (
-              <li key={g} className="flex gap-1.5">
-                <span className="text-destructive">−</span>
-                {g}
+            {result.gaps.map((gap) => (
+              <li key={gap} className="flex gap-1.5">
+                <span className="text-destructive">-</span>
+                {gap}
               </li>
             ))}
           </ul>

@@ -15,3 +15,14 @@ export const messageIdParamSchema = z.object({
     id: z.string().min(1, "id is required"),
   }),
 });
+
+export const searchMessagesSchema = z.object({
+  query: z.object({
+    dateFrom: z.string().date().optional(),
+    dateTo: z.string().date().optional(),
+    subject: z.string().trim().max(200).optional(),
+    maxResults: z.coerce.number().int().min(1).max(100).default(25),
+  }),
+});
+
+export type SearchMessagesInput = z.infer<typeof searchMessagesSchema>["query"];
