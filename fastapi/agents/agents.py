@@ -1004,7 +1004,10 @@ def make_tools_node(tools_by_name, confirm_tools=frozenset(), write_tools=frozen
                         f"Their instruction: {decision['message']}"
                     )
             else:
-                result = await tool.ainvoke(tool_call["args"])
+                tool_args = tool_call["args"]
+                if tool_call["name"] == "get_current_timezone":
+                    tool_args = {**tool_args, "state": state}
+                result = await tool.ainvoke(tool_args)
                 if tool_call["name"] in write_tools:
                     new_writes.append(dedupe_key)
 
