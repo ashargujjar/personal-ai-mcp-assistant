@@ -27,6 +27,7 @@ model User {
   memories             Memory[]
   tasks                Task[]
   documents            Document[]
+  resumeSearches       ResumeSearch[]
 
   @@map("users")
 }
@@ -47,6 +48,76 @@ model Task {
 
   @@index([userId])
   @@map("tasks")
+}
+
+enum ResumeSearchStatus {
+  QUEUED
+  SEARCHING_GMAIL
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum ResumeApplicantStatus {
+  DISCOVERED
+  DOWNLOADING
+  UPLOADING
+  SAVED
+  FAILED
+}
+
+model ResumeSearch {
+  id             String            @id @default(cuid())
+  userId         String            @map("user_id")
+  jobTitle       String            @map("job_title")
+  description    String?           @db.Text
+  dateFrom       DateTime          @map("date_from")
+  dateTo         DateTime          @map("date_to")
+  status         ResumeSearchStatus @default(QUEUED)
+  total          Int               @default(0)
+  processed      Int               @default(0)
+  succeeded      Int               @default(0)
+  failed         Int               @default(0)
+  errorMessage   String?           @map("error_message") @db.Text
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+  startedAt      DateTime?         @map("started_at")
+  finishedAt     DateTime?         @map("finished_at")
+
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  applicants     ResumeApplicant[]
+
+  @@index([userId, createdAt])
+  @@index([userId, status])
+  @@map("resume_searches")
+}
+
+model ResumeApplicant {
+  id                 String                @id @default(cuid())
+  searchId           String                @map("search_id")
+  userId             String                @map("user_id")
+  gmailMessageId     String                @map("gmail_message_id")
+  gmailAttachmentId  String                @map("gmail_attachment_id")
+  candidateName      String?               @map("candidate_name")
+  candidateEmail     String?               @map("candidate_email")
+  emailSubject       String                @map("email_subject")
+  receivedAt         DateTime              @map("received_at")
+  originalFilename   String                @map("original_filename")
+  mimeType           String                @map("mime_type")
+  fileSize           Int?                 @map("file_size")
+  cloudinaryPublicId String?               @map("cloudinary_public_id")
+  cloudinaryUrl      String?               @map("cloudinary_url")
+  status             ResumeApplicantStatus @default(DISCOVERED)
+  errorMessage       String?               @map("error_message") @db.Text
+  createdAt          DateTime              @default(now()) @map("created_at")
+  updatedAt          DateTime              @updatedAt @map("updated_at")
+
+  search             ResumeSearch          @relation(fields: [searchId], references: [id], onDelete: Cascade)
+
+  @@unique([searchId, gmailMessageId, gmailAttachmentId])
+  @@index([userId, createdAt])
+  @@index([searchId, status])
+  @@map("resume_applicants")
 }
 
 model Memory {
