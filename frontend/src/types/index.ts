@@ -6,7 +6,6 @@ export * from "./task";
 export * from "./approval";
 export * from "./knowledge";
 export * from "./github";
-export * from "./note";
 export * from "./meeting";
 export * from "./tool";
 export * from "./automation";

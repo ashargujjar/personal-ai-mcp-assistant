@@ -8,7 +8,6 @@ import Login from "@/pages/Login";
 import Logout from "@/pages/Logout";
 import Meetings from "@/pages/Meetings";
 import NotFound from "@/pages/NotFound";
-import Notes from "@/pages/Notes";
 import ResumeScreening from "@/pages/ResumeScreening";
 import Settings from "@/pages/Settings";
 import Signup from "@/pages/Signup";
@@ -29,7 +28,6 @@ export default function App() {
         <Route path="/assistant" element={<Assistant />} />
         <Route path="/voice" element={<Voice />} />
         <Route path="/knowledge" element={<Knowledge />} />
-        <Route path="/notes" element={<Notes />} />
         <Route path="/tasks" element={<Tasks />} />
         <Route path="/calendar" element={<Calendar />} />
         <Route path="/meetings" element={<Meetings />} />

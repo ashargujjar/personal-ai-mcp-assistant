@@ -1,13 +1,12 @@
 import { documents } from "@/mock/knowledge";
 import { issues, repositories } from "@/mock/github";
-import { notes } from "@/mock/notes";
 import { tasks } from "@/mock/tasks";
 import { meetings } from "@/mock/meetings";
 import { calendarEvents } from "@/mock/calendar";
 import { sleep } from "@/lib/utils";
 import type { SearchResultItem } from "@/types";
 
-export type SearchScope = "all" | "github" | "document" | "note" | "task" | "meeting" | "calendar";
+export type SearchScope = "all" | "github" | "document" | "task" | "meeting" | "calendar";
 
 export const searchService = {
   async search(query: string, scope: SearchScope = "all"): Promise<SearchResultItem[]> {
@@ -32,11 +31,6 @@ export const searchService = {
       documents
         .filter((d) => d.filename.toLowerCase().includes(q))
         .forEach((d) => results.push({ id: d.id, type: "document", title: d.filename, subtitle: "Knowledge Base", path: `/knowledge` }));
-    }
-    if (scope === "all" || scope === "note") {
-      notes
-        .filter((n) => n.title.toLowerCase().includes(q) || n.content.toLowerCase().includes(q))
-        .forEach((n) => results.push({ id: n.id, type: "note", title: n.title, subtitle: n.tags.join(", "), path: `/notes` }));
     }
     if (scope === "all" || scope === "task") {
       tasks

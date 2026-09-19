@@ -3,7 +3,6 @@ import {
   FileText,
   Github,
   MessageSquare,
-  NotebookText,
   Search,
   Users,
   type LucideIcon,
@@ -19,7 +18,6 @@ import type { SearchResultItem } from "@/types";
 const typeIcons: Record<SearchResultItem["type"], LucideIcon> = {
   github: Github,
   document: FileText,
-  note: NotebookText,
   task: MessageSquare,
   meeting: Users,
   calendar: Calendar,
@@ -28,7 +26,6 @@ const typeIcons: Record<SearchResultItem["type"], LucideIcon> = {
 const typeLabels: Record<SearchResultItem["type"], string> = {
   github: "GitHub",
   document: "Document",
-  note: "Note",
   task: "Task",
   meeting: "Meeting",
   calendar: "Calendar",
@@ -38,7 +35,6 @@ const staticNav = [
   { label: "AI Assistant", path: "/" },
   { label: "Voice", path: "/voice" },
   { label: "Knowledge Base", path: "/knowledge" },
-  { label: "Notes", path: "/notes" },
   { label: "Tasks", path: "/tasks" },
   { label: "Calendar", path: "/calendar" },
   { label: "Meetings", path: "/meetings" },

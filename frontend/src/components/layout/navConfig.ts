@@ -6,7 +6,6 @@ import {
   Layers,
   Lock,
   Mic,
-  NotebookText,
   Sparkles,
   UserSearch,
   Users,
@@ -38,7 +37,6 @@ export const navGroups: NavGroup[] = [
     label: "Knowledge",
     items: [
       { label: "Knowledge Base", path: "/knowledge", icon: Layers },
-      { label: "Notes", path: "/notes", icon: NotebookText },
     ],
   },
   {
