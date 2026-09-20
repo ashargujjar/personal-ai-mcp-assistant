@@ -63,6 +63,14 @@ export async function uploadPdf(file: Buffer, publicId: string) {
     throw new AppError("Unexpected storage response", 502);
 }
 
+export async function uploadResumePdf(file: Buffer, publicId: string) {
+  await uploadPdf(file, publicId);
+
+  return {
+    publicId,
+    url: downloadUrl(publicId),
+  };
+}
 export async function deletePdf(publicId: string) {
   const result = await request("destroy", {
     public_id: publicId,

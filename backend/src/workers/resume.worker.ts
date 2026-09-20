@@ -1,7 +1,10 @@
 import { Job, Worker } from "bullmq";
 import { redisConnection } from "../config/redis";
 import { prisma } from "../db/connect";
-import { PROCESS_RESUME_SEARCH_JOB, RESUME_QUEUE_NAME } from "../queues/resume.queue";
+import {
+  PROCESS_RESUME_SEARCH_JOB,
+  RESUME_QUEUE_NAME,
+} from "../queues/resume.queue";
 import type { ResumeSearchJob } from "../queues/resume.types";
 import {
   buildResumeGmailQuery,
@@ -10,7 +13,10 @@ import {
   getGmailClientForUser,
   messageHeader,
 } from "../services/gmail.service";
-
+import {
+  PROCESS_RESUME_ATTACHMENT_JOB,
+  resumeAttachmentQueue,
+} from "../queues/resume-attachment.queue";
 function parseSender(value: string) {
   const match = value.match(/^(?:"?([^"<]*)"?\s*)?<([^>]+)>$/);
   if (match) {
@@ -55,7 +61,11 @@ const worker = new Worker<ResumeSearchJob>(
     });
 
     const gmail = await getGmailClientForUser(userId);
-    const query = buildResumeGmailQuery(search.dateFrom, search.dateTo, search.jobTitle);
+    const query = buildResumeGmailQuery(
+      search.dateFrom,
+      search.dateTo,
+      search.jobTitle,
+    );
     let pageToken: string | undefined;
     do {
       const page = await gmail.users.messages.list({
@@ -84,7 +94,7 @@ const worker = new Worker<ResumeSearchJob>(
         }
 
         for (const attachment of attachments) {
-          await prisma.resumeApplicant.upsert({
+          const applicant = await prisma.resumeApplicant.upsert({
             where: {
               searchId_gmailMessageId_gmailAttachmentId: {
                 searchId: search.id,
@@ -114,6 +124,19 @@ const worker = new Worker<ResumeSearchJob>(
             },
             update: {},
           });
+          await resumeAttachmentQueue.add(
+            PROCESS_RESUME_ATTACHMENT_JOB,
+            {
+              searchId: search.id,
+              applicantId: applicant.id,
+              userId,
+              gmailMessageId: messageRef.id,
+              gmailAttachmentId: attachment.attachmentId,
+            },
+            {
+              jobId: applicant.id,
+            },
+          );
         }
       }
 
@@ -132,7 +155,9 @@ const worker = new Worker<ResumeSearchJob>(
       },
     });
 
-    console.log(`[resume-worker] discovered search=${search.id} applicants=${applicantCount}`);
+    console.log(
+      `[resume-worker] discovered search=${search.id} applicants=${applicantCount}`,
+    );
 
     return { searchId: search.id };
   },

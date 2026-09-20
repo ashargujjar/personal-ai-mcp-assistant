@@ -50,14 +50,20 @@ export function messageHeader(message: gmail_v1.Schema$Message, name: string) {
 }
 
 function decodeBase64Url(value: string) {
-  return Buffer.from(value.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+  return Buffer.from(
+    value.replace(/-/g, "+").replace(/_/g, "/"),
+    "base64",
+  ).toString("utf8");
 }
 
 export function extractPlainTextBody(message: gmail_v1.Schema$Message): string {
   const parts = message.payload?.parts ?? [];
-  const plainPart = parts.find((part) => part.mimeType === "text/plain" && part.body?.data);
+  const plainPart = parts.find(
+    (part) => part.mimeType === "text/plain" && part.body?.data,
+  );
   if (plainPart?.body?.data) return decodeBase64Url(plainPart.body.data);
-  if (message.payload?.body?.data) return decodeBase64Url(message.payload.body.data);
+  if (message.payload?.body?.data)
+    return decodeBase64Url(message.payload.body.data);
   return "";
 }
 
@@ -68,12 +74,16 @@ export interface PdfAttachment {
   size: number;
 }
 
-export function extractPdfAttachments(message: gmail_v1.Schema$Message): PdfAttachment[] {
+export function extractPdfAttachments(
+  message: gmail_v1.Schema$Message,
+): PdfAttachment[] {
   const attachments: PdfAttachment[] = [];
 
   function visit(part: gmail_v1.Schema$MessagePart) {
     const filename = part.filename?.trim() ?? "";
-    const isPdf = part.mimeType === "application/pdf" || filename.toLowerCase().endsWith(".pdf");
+    const isPdf =
+      part.mimeType === "application/pdf" ||
+      filename.toLowerCase().endsWith(".pdf");
     if (isPdf && part.body?.attachmentId && filename) {
       attachments.push({
         attachmentId: part.body.attachmentId,
@@ -89,7 +99,11 @@ export function extractPdfAttachments(message: gmail_v1.Schema$Message): PdfAtta
   return attachments;
 }
 
-export function buildResumeGmailQuery(dateFrom: Date, dateTo: Date, jobTitle: string) {
+export function buildResumeGmailQuery(
+  dateFrom: Date,
+  dateTo: Date,
+  jobTitle: string,
+) {
   const exclusiveEnd = new Date(dateTo);
   exclusiveEnd.setUTCDate(exclusiveEnd.getUTCDate() + 1);
   const terms = jobTitle
@@ -105,4 +119,25 @@ export function buildResumeGmailQuery(dateFrom: Date, dateTo: Date, jobTitle: st
   ];
   if (terms.length > 0) query.push(`subject:(${terms.join(" ")})`);
   return query.join(" ");
+}
+
+export async function downloadGmailAttachment(
+  userId: string,
+  messageId: string,
+  attachmentId: string,
+): Promise<Buffer> {
+  const gmail = await getGmailClientForUser(userId);
+
+  const result = await gmail.users.messages.attachments.get({
+    userId: "me",
+    messageId,
+    id: attachmentId,
+  });
+
+  const data = result.data.data;
+  if (!data) {
+    throw new Error("Gmail attachment had no data");
+  }
+
+  return Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64");
 }
