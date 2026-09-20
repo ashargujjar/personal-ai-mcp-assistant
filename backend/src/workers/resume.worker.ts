@@ -5,7 +5,10 @@ import {
   PROCESS_RESUME_SEARCH_JOB,
   RESUME_QUEUE_NAME,
 } from "../queues/resume.queue";
-import type { ResumeSearchJob } from "../queues/resume.types";
+import type {
+  ResumeAttachmentJob,
+  ResumeSearchJob,
+} from "../queues/resume.types";
 import {
   buildResumeGmailQuery,
   extractPdfAttachments,
@@ -66,6 +69,7 @@ const worker = new Worker<ResumeSearchJob>(
       search.dateTo,
       search.jobTitle,
     );
+    const attachmentJobs: ResumeAttachmentJob[] = [];
     let pageToken: string | undefined;
     do {
       const page = await gmail.users.messages.list({
@@ -124,19 +128,13 @@ const worker = new Worker<ResumeSearchJob>(
             },
             update: {},
           });
-          await resumeAttachmentQueue.add(
-            PROCESS_RESUME_ATTACHMENT_JOB,
-            {
-              searchId: search.id,
-              applicantId: applicant.id,
-              userId,
-              gmailMessageId: messageRef.id,
-              gmailAttachmentId: attachment.attachmentId,
-            },
-            {
-              jobId: applicant.id,
-            },
-          );
+          attachmentJobs.push({
+            searchId: search.id,
+            applicantId: applicant.id,
+            userId,
+            gmailMessageId: messageRef.id,
+            gmailAttachmentId: attachment.attachmentId,
+          });
         }
       }
 
@@ -147,6 +145,23 @@ const worker = new Worker<ResumeSearchJob>(
       where: { searchId: search.id },
     });
 
+    if (applicantCount === 0) {
+      await prisma.resumeSearch.update({
+        where: { id: search.id },
+        data: {
+          status: "COMPLETED",
+          total: 0,
+          processed: 0,
+          succeeded: 0,
+          failed: 0,
+          finishedAt: new Date(),
+        },
+      });
+
+      console.log(`[resume-worker] completed empty search=${search.id}`);
+      return { searchId: search.id };
+    }
+
     await prisma.resumeSearch.update({
       where: { id: search.id },
       data: {
@@ -154,6 +169,16 @@ const worker = new Worker<ResumeSearchJob>(
         total: applicantCount,
       },
     });
+
+    for (const attachmentJob of attachmentJobs) {
+      await resumeAttachmentQueue.add(
+        PROCESS_RESUME_ATTACHMENT_JOB,
+        attachmentJob,
+        {
+          jobId: attachmentJob.applicantId,
+        },
+      );
+    }
 
     console.log(
       `[resume-worker] discovered search=${search.id} applicants=${applicantCount}`,
