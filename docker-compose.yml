@@ -23,12 +23,15 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql://nexus:nexus@postgres:5432/nexus_ai
+      REDIS_URL: redis://redis:6379
       CHOKIDAR_USEPOLLING: "true"
       CHOKIDAR_INTERVAL: "1000"
     ports:
       - "4000:4000"
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     volumes:
       - ./backend:/app
@@ -142,6 +145,25 @@ services:
         condition: service_healthy
     volumes:
       - ./fastapi:/app
+  resume-worker:
+    build:
+      context: ./backend
+      dockerfile: dockerfile
+    restart: unless-stopped
+    command: npm run worker:resume
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://nexus:nexus@postgres:5432/nexus_ai
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
 
 volumes:
   postgres-data:
