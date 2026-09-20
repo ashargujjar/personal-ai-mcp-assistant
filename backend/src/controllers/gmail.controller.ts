@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import { AppError } from "../middleware/errorHandler";
 import type { SearchMessagesInput, SendMessageInput } from "@/schema/gmail.schema";
 import { prisma } from "@/db/connect";
+import { getGmailClientForUser } from "../services/gmail.service";
 const GMAIL_SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/gmail.send",
@@ -20,34 +21,6 @@ function buildOAuthClient() {
     REDIRECT_URI,
   );
 }
-async function getGmailClientForUser(userId: string) {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user?.gmailRefreshToken) {
-    throw new AppError("Gmail is not connected for this account", 400);
-  }
-
-  const client = buildOAuthClient();
-  client.setCredentials({
-    access_token: user.gmailAccessToken ?? undefined,
-    refresh_token: user.gmailRefreshToken,
-    expiry_date: user.gmailTokenExpiry?.getTime(),
-  });
-
-  client.on("tokens", async (tokens) => {
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        gmailAccessToken: tokens.access_token ?? user.gmailAccessToken,
-        gmailTokenExpiry: tokens.expiry_date
-          ? new Date(tokens.expiry_date)
-          : user.gmailTokenExpiry,
-      },
-    });
-  });
-
-  return google.gmail({ version: "v1", auth: client });
-}
-
 export async function gmailStatus(
   req: Request,
   res: Response,

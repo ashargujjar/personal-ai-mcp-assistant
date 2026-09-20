@@ -3,6 +3,27 @@ import { redisConnection } from "../config/redis";
 import { prisma } from "../db/connect";
 import { PROCESS_RESUME_SEARCH_JOB, RESUME_QUEUE_NAME } from "../queues/resume.queue";
 import type { ResumeSearchJob } from "../queues/resume.types";
+import {
+  buildResumeGmailQuery,
+  extractPdfAttachments,
+  extractPlainTextBody,
+  getGmailClientForUser,
+  messageHeader,
+} from "../services/gmail.service";
+
+function parseSender(value: string) {
+  const match = value.match(/^(?:"?([^"<]*)"?\s*)?<([^>]+)>$/);
+  if (match) {
+    return {
+      name: match[1]?.trim() || null,
+      email: match[2].trim(),
+    };
+  }
+  return {
+    name: null,
+    email: value.trim(),
+  };
+}
 
 const worker = new Worker<ResumeSearchJob>(
   RESUME_QUEUE_NAME,
@@ -33,7 +54,85 @@ const worker = new Worker<ResumeSearchJob>(
       },
     });
 
-    console.log(`[resume-worker] started search ${search.id}`);
+    const gmail = await getGmailClientForUser(userId);
+    const query = buildResumeGmailQuery(search.dateFrom, search.dateTo, search.jobTitle);
+    let pageToken: string | undefined;
+    do {
+      const page = await gmail.users.messages.list({
+        userId: "me",
+        q: query,
+        maxResults: 100,
+        pageToken,
+      });
+
+      for (const messageRef of page.data.messages ?? []) {
+        if (!messageRef.id) continue;
+
+        const message = await gmail.users.messages.get({
+          userId: "me",
+          id: messageRef.id,
+          format: "full",
+        });
+        const sender = parseSender(messageHeader(message.data, "From"));
+        const attachments = extractPdfAttachments(message.data);
+        if (attachments.length === 0) continue;
+
+        const receivedAtValue = messageHeader(message.data, "Date");
+        const receivedAt = new Date(receivedAtValue);
+        if (Number.isNaN(receivedAt.getTime())) {
+          throw new Error(`Invalid Gmail date for message ${messageRef.id}`);
+        }
+
+        for (const attachment of attachments) {
+          await prisma.resumeApplicant.upsert({
+            where: {
+              searchId_gmailMessageId_gmailAttachmentId: {
+                searchId: search.id,
+                gmailMessageId: messageRef.id,
+                gmailAttachmentId: attachment.attachmentId,
+              },
+            },
+            create: {
+              searchId: search.id,
+              userId,
+              gmailMessageId: messageRef.id,
+              gmailAttachmentId: attachment.attachmentId,
+              gmailThreadId: message.data.threadId ?? "",
+              emailFrom: messageHeader(message.data, "From"),
+              emailTo: messageHeader(message.data, "To"),
+              emailBody: extractPlainTextBody(message.data),
+              emailSnippet: message.data.snippet ?? "",
+              gmailLabelIds: message.data.labelIds ?? [],
+              candidateName: sender.name,
+              candidateEmail: sender.email || null,
+              emailSubject: messageHeader(message.data, "Subject"),
+              receivedAt,
+              originalFilename: attachment.filename,
+              mimeType: attachment.mimeType,
+              fileSize: attachment.size || null,
+              status: "DISCOVERED",
+            },
+            update: {},
+          });
+        }
+      }
+
+      pageToken = page.data.nextPageToken ?? undefined;
+    } while (pageToken);
+
+    const applicantCount = await prisma.resumeApplicant.count({
+      where: { searchId: search.id },
+    });
+
+    await prisma.resumeSearch.update({
+      where: { id: search.id },
+      data: {
+        status: "PROCESSING",
+        total: applicantCount,
+      },
+    });
+
+    console.log(`[resume-worker] discovered search=${search.id} applicants=${applicantCount}`);
 
     return { searchId: search.id };
   },
@@ -50,6 +149,7 @@ worker.on("completed", (job) => {
 worker.on("failed", async (job, error) => {
   console.error(`[resume-worker] failed job ${job?.id}`, error);
   if (!job) return;
+  if (job.attemptsMade < (job.opts.attempts ?? 1)) return;
 
   const { searchId } = job.data;
 

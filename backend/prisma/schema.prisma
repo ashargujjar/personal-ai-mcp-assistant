@@ -98,6 +98,12 @@ model ResumeApplicant {
   userId             String                @map("user_id")
   gmailMessageId     String                @map("gmail_message_id")
   gmailAttachmentId  String                @map("gmail_attachment_id")
+  gmailThreadId      String                @map("gmail_thread_id")
+  emailFrom          String                @map("email_from")
+  emailTo            String                @map("email_to")
+  emailBody         String                @map("email_body") @db.Text
+  emailSnippet       String                @map("email_snippet") @db.Text
+  gmailLabelIds      Json?                 @map("gmail_label_ids")
   candidateName      String?               @map("candidate_name")
   candidateEmail     String?               @map("candidate_email")
   emailSubject       String                @map("email_subject")
