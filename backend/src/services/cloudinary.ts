@@ -59,15 +59,18 @@ export async function uploadPdf(file: Buffer, publicId: string) {
     { public_id: publicId, type: "authenticated", overwrite: "false" },
     file,
   );
-  if (result.public_id !== publicId)
-    throw new AppError("Unexpected storage response", 502);
+  if (!result.public_id) {
+    throw new AppError("Cloudinary did not return a public ID", 502);
+  }
+
+  return result.public_id;
 }
 
 export async function uploadResumePdf(file: Buffer, publicId: string) {
-  await uploadPdf(file, publicId);
+  const uploadedPublicId = await uploadPdf(file, publicId);
 
   return {
-    publicId,
+    publicId: uploadedPublicId,
   };
 }
 export async function deletePdf(publicId: string) {

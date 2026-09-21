@@ -6,7 +6,8 @@ export interface ResumeSubmission {
   candidateEmail: string;
   emailSubject: string;
   receivedAt: string;
-  pdfLink: string;
+  cloudinaryUrl: string | null;
+  cloudinaryPublicId: string | null;
   jobTitle: string;
   description?: string;
 }
@@ -32,6 +33,6 @@ export interface ResumeSearch {
   fetchedAt: string;
   submissions: ResumeSubmission[];
   results: AtsResult[];
-  status: "queued" | "searching" | "downloading" | "ready" | "failed";
+  status: "queued" | "searching" | "downloading" | "processing" | "ready" | "failed";
   error?: string;
 }

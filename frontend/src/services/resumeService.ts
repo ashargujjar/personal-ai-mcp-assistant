@@ -1,83 +1,120 @@
-import { atsResultsBySubmissionId, resumeSubmissions } from "@/mock/resumes";
-import { sleep } from "@/lib/utils";
 import type { AtsResult, ResumeSearch, ResumeSubmission } from "@/types";
 
-const STORAGE_KEY = "nexus-ai.resume-searches";
+const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000/api";
 
-function readSearches(): ResumeSearch[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const value = window.localStorage.getItem(STORAGE_KEY);
-    if (!value) return [];
-    return (JSON.parse(value) as ResumeSearch[]).map((search) => ({
-      ...search,
-      status: search.status ?? "ready",
-    }));
-  } catch {
-    return [];
-  }
+type BackendSearchStatus = "QUEUED" | "SEARCHING_GMAIL" | "PROCESSING" | "COMPLETED" | "FAILED";
+type FrontendSearchStatus = ResumeSearch["status"];
+
+interface BackendApplicant {
+  id: string;
+  candidateName: string | null;
+  candidateEmail: string | null;
+  emailSubject: string;
+  receivedAt: string;
+  cloudinaryPublicId: string | null;
+  cloudinaryUrl?: string | null;
 }
 
-function writeSearches(searches: ResumeSearch[]) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(searches.slice(0, 20)));
+interface BackendResumeSearch {
+  id: string;
+  jobTitle: string;
+  description: string | null;
+  dateFrom: string;
+  dateTo: string;
+  status: BackendSearchStatus;
+  errorMessage: string | null;
+  createdAt: string;
+  applicants: BackendApplicant[];
+}
+
+function authHeaders(token: string | null): HeadersInit {
+  return {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
+async function parseResponse<T>(res: Response, fallbackMessage: string): Promise<T> {
+  if (!res.ok) {
+    const json = await res.json().catch(() => null);
+    throw new Error(json?.message ?? fallbackMessage);
+  }
+  if (res.status === 204) return undefined as T;
+  const json = await res.json();
+  return json.data as T;
+}
+
+function mapStatus(status: BackendSearchStatus): FrontendSearchStatus {
+  if (status === "QUEUED") return "queued";
+  if (status === "SEARCHING_GMAIL") return "searching";
+  if (status === "PROCESSING") return "processing";
+  if (status === "FAILED") return "failed";
+  return "ready";
+}
+
+function toDateInput(value: string) {
+  return value.slice(0, 10);
+}
+
+function mapSearch(search: BackendResumeSearch): ResumeSearch {
+  const description = search.description ?? undefined;
+  return {
+    id: search.id,
+    jobTitle: search.jobTitle,
+    description,
+    dateFrom: toDateInput(search.dateFrom),
+    dateTo: toDateInput(search.dateTo),
+    fetchedAt: search.createdAt,
+    status: mapStatus(search.status),
+    error: search.errorMessage ?? undefined,
+    submissions: search.applicants.map((applicant): ResumeSubmission => ({
+      id: applicant.id,
+      candidateName: applicant.candidateName ?? "Unknown candidate",
+      candidateEmail: applicant.candidateEmail ?? "",
+      emailSubject: applicant.emailSubject,
+      receivedAt: applicant.receivedAt,
+      cloudinaryPublicId: applicant.cloudinaryPublicId,
+      cloudinaryUrl: applicant.cloudinaryUrl ?? null,
+      jobTitle: search.jobTitle,
+      description,
+    })),
+    results: [],
+  };
 }
 
 export const resumeService = {
-  getSavedSearches(): ResumeSearch[] {
-    return readSearches().sort((a, b) => (a.fetchedAt < b.fetchedAt ? 1 : -1));
+  async list(token: string | null): Promise<ResumeSearch[]> {
+    const res = await fetch(`${API_URL}/resume-searches`, { headers: authHeaders(token) });
+    const searches = await parseResponse<BackendResumeSearch[]>(res, "Failed to load resume searches");
+    return searches.map(mapSearch);
   },
 
-  saveSearch(input: Omit<ResumeSearch, "id" | "fetchedAt" | "status"> & { status?: ResumeSearch["status"] }): ResumeSearch {
-    const search: ResumeSearch = {
-      ...input,
-      id: `resume-search-${Date.now()}`,
-      fetchedAt: new Date().toISOString(),
-      status: input.status ?? "queued",
-    };
-    writeSearches([search, ...readSearches()]);
-    return search;
+  async get(token: string | null, id: string): Promise<ResumeSearch> {
+    const res = await fetch(`${API_URL}/resume-searches/${encodeURIComponent(id)}`, { headers: authHeaders(token) });
+    return mapSearch(await parseResponse<BackendResumeSearch>(res, "Failed to load resume search"));
   },
 
-  updateSearch(
-    id: string,
-    patch: Partial<Pick<ResumeSearch, "submissions" | "results" | "status" | "error">>,
-  ): ResumeSearch | undefined {
-    const updated = readSearches().map((search) => (search.id === id ? { ...search, ...patch } : search));
-    writeSearches(updated);
-    return updated.find((search) => search.id === id);
-  },
-
-  deleteSearch(id: string) {
-    writeSearches(readSearches().filter((search) => search.id !== id));
-  },
-
-  async fetchFromGmail(
+  async create(
+    token: string | null,
     input: { dateFrom: string; dateTo: string; jobTitle: string; description?: string },
-    onStatus?: (status: "searching" | "downloading") => void,
-  ): Promise<ResumeSubmission[]> {
-    onStatus?.("searching");
-    await sleep(700);
-    onStatus?.("downloading");
-    const from = new Date(input.dateFrom).getTime();
-    const to = new Date(input.dateTo).getTime() + 24 * 60 * 60 * 1000 - 1;
-    return resumeSubmissions
-      .filter((r) => {
-        const t = new Date(r.receivedAt).getTime();
-        return t >= from && t <= to;
-      })
-      .map((r) => ({ ...r, jobTitle: input.jobTitle, description: input.description }))
-      .sort((a, b) => (a.receivedAt < b.receivedAt ? 1 : -1));
+  ): Promise<ResumeSearch> {
+    const res = await fetch(`${API_URL}/resume-searches`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify(input),
+    });
+    return mapSearch(await parseResponse<BackendResumeSearch>(res, "Failed to create resume search"));
   },
 
-  async runAtsScan(submissions: ResumeSubmission[]): Promise<AtsResult[]> {
-    await sleep(1400);
-    return submissions
-      .map((s) => {
-        const result = atsResultsBySubmissionId[s.id];
-        return result ? { submissionId: s.id, ...result } : null;
-      })
-      .filter((r): r is AtsResult => r !== null)
-      .sort((a, b) => b.matchScore - a.matchScore);
+  async remove(token: string | null, id: string): Promise<void> {
+    const res = await fetch(`${API_URL}/resume-searches/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+      headers: authHeaders(token),
+    });
+    await parseResponse<void>(res, "Failed to delete resume search");
+  },
+
+  async runAtsScan(_submissions: ResumeSubmission[]): Promise<AtsResult[]> {
+    return [];
   },
 };

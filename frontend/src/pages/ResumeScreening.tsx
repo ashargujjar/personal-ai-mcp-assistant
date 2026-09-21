@@ -13,19 +13,28 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { useAuth } from "@/hooks/useAuth";
 import { formatDate, initials } from "@/lib/utils";
 import { resumeService } from "@/services/resumeService";
 import type { AtsResult, ResumeSearch, ResumeSubmission } from "@/types";
 
-const TODAY = "2026-08-22";
+function localDateString(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+const TODAY = localDateString();
 
 function daysAgo(n: number) {
-  const d = new Date(`${TODAY}T00:00:00`);
+  const d = new Date();
   d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0, 10);
+  return localDateString(d);
 }
 
 export default function ResumeScreening() {
+  const { token } = useAuth();
   const [jobTitle, setJobTitle] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [dateFrom, setDateFrom] = React.useState(daysAgo(21));
@@ -33,48 +42,51 @@ export default function ResumeScreening() {
   const [tab, setTab] = React.useState("inbox");
   const [savedSearches, setSavedSearches] = React.useState<ResumeSearch[]>([]);
   const [selectedSearchId, setSelectedSearchId] = React.useState<string | null>(null);
+  const [loadError, setLoadError] = React.useState<string | null>(null);
+  const [isLoadingSearches, setIsLoadingSearches] = React.useState(true);
 
   React.useEffect(() => {
-    const saved = resumeService.getSavedSearches();
-    setSavedSearches(saved);
-    setSelectedSearchId(saved[0]?.id ?? null);
-  }, []);
+    let cancelled = false;
+    setIsLoadingSearches(true);
+    resumeService
+      .list(token)
+      .then((searches) => {
+        if (cancelled) return;
+        setSavedSearches(searches);
+        setSelectedSearchId((current) => current ?? searches[0]?.id ?? null);
+        setLoadError(null);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setLoadError(error instanceof Error ? error.message : "Failed to load resume searches.");
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingSearches(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
   const selectedSearch = savedSearches.find((search) => search.id === selectedSearchId);
   const submissions = selectedSearch?.submissions ?? [];
   const results = selectedSearch?.results ?? [];
 
   const fetchMutation = useMutation({
-    mutationFn: async (searchId: string) => {
-      resumeService.updateSearch(searchId, { status: "searching", error: undefined });
-      setSavedSearches(resumeService.getSavedSearches());
-      const fetchedSubmissions = await resumeService.fetchFromGmail({
+    mutationFn: async () => {
+      return resumeService.create(token, {
         dateFrom,
         dateTo,
         jobTitle,
         description: description.trim() || undefined,
-      }, (status) => {
-        resumeService.updateSearch(searchId, { status });
-        setSavedSearches(resumeService.getSavedSearches());
       });
-      resumeService.updateSearch(searchId, {
-        submissions: fetchedSubmissions,
-        status: "ready",
-      });
-      return fetchedSubmissions;
     },
-    onSuccess: () => {
-      setSavedSearches(resumeService.getSavedSearches());
+    onSuccess: (search) => {
+      setSavedSearches((current) => [search, ...current.filter((item) => item.id !== search.id)]);
+      setSelectedSearchId(search.id);
       setTab("inbox");
       setJobTitle("");
       setDescription("");
-    },
-    onError: (error, searchId) => {
-      resumeService.updateSearch(searchId, {
-        status: "failed",
-        error: error instanceof Error ? error.message : "Resume search failed.",
-      });
-      setSavedSearches(resumeService.getSavedSearches());
     },
   });
 
@@ -82,22 +94,29 @@ export default function ResumeScreening() {
     mutationFn: () => resumeService.runAtsScan(submissions),
     onSuccess: (scanResults) => {
       if (!selectedSearchId) return;
-      resumeService.updateSearch(selectedSearchId, { results: scanResults });
-      setSavedSearches(resumeService.getSavedSearches());
+      setSavedSearches((current) =>
+        current.map((search) => (search.id === selectedSearchId ? { ...search, results: scanResults } : search)),
+      );
       setTab("results");
     },
   });
 
-  function openSavedSearch(search: ResumeSearch) {
+  async function openSavedSearch(search: ResumeSearch) {
     setSelectedSearchId(search.id);
     fetchMutation.reset();
     scanMutation.reset();
     setTab(search.results.length > 0 ? "results" : "inbox");
+    try {
+      const freshSearch = await resumeService.get(token, search.id);
+      setSavedSearches((current) => current.map((item) => (item.id === freshSearch.id ? freshSearch : item)));
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : "Failed to refresh resume search.");
+    }
   }
 
-  function removeSavedSearch(id: string) {
-    resumeService.deleteSearch(id);
-    const remaining = resumeService.getSavedSearches();
+  async function removeSavedSearch(id: string) {
+    await resumeService.remove(token, id);
+    const remaining = savedSearches.filter((search) => search.id !== id);
     setSavedSearches(remaining);
     if (selectedSearchId === id) {
       setSelectedSearchId(remaining[0]?.id ?? null);
@@ -106,25 +125,14 @@ export default function ResumeScreening() {
   }
 
   function createSearch() {
-    const saved = resumeService.saveSearch({
-      jobTitle,
-      description: description.trim() || undefined,
-      dateFrom,
-      dateTo,
-      submissions: [],
-      results: [],
-      status: "queued",
-    });
-    setSavedSearches(resumeService.getSavedSearches());
-    setSelectedSearchId(saved.id);
-    setTab("inbox");
-    fetchMutation.mutate(saved.id);
+    fetchMutation.mutate();
   }
 
   function statusLabel(status: ResumeSearch["status"]) {
     if (status === "queued") return "Queued";
     if (status === "searching") return "Searching Gmail";
     if (status === "downloading") return "Downloading CVs";
+    if (status === "processing") return "Processing CVs";
     if (status === "failed") return "Failed";
     return "Ready";
   }
@@ -167,6 +175,11 @@ export default function ResumeScreening() {
               {fetchMutation.isPending ? "Adding search..." : "Fetch Resumes"}
             </Button>
           </div>
+          {fetchMutation.isError && (
+            <p className="text-sm text-destructive">
+              {fetchMutation.error instanceof Error ? fetchMutation.error.message : "Resume search failed."}
+            </p>
+          )}
         </CardContent>
       </Card>
 
@@ -176,7 +189,11 @@ export default function ResumeScreening() {
             <CardTitle>Search queue</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            {savedSearches.length === 0 ? (
+            {isLoadingSearches ? (
+              <Skeleton className="h-20 w-full" />
+            ) : loadError ? (
+              <p className="text-sm text-destructive">{loadError}</p>
+            ) : savedSearches.length === 0 ? (
               <p className="text-sm text-muted-foreground">New searches will appear here.</p>
             ) : (
               savedSearches.map((search) => (
@@ -203,7 +220,7 @@ export default function ResumeScreening() {
                     variant="ghost"
                     size="icon-sm"
                     aria-label={`Delete ${search.jobTitle} search`}
-                    onClick={() => removeSavedSearch(search.id)}
+                    onClick={() => void removeSavedSearch(search.id)}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
@@ -236,9 +253,7 @@ export default function ResumeScreening() {
               {selectedSearch.status !== "ready" && (
                 <div className={`rounded-lg border p-3 text-sm ${selectedSearch.status === "failed" ? "border-destructive/30 text-destructive" : "border-primary/20 text-muted-foreground"}`}>
                   <p className="font-medium">{statusLabel(selectedSearch.status)}</p>
-                  <p className="mt-1">
-                    {selectedSearch.error ?? "This search is still being processed. The CV list will appear when email and PDF downloading is complete."}
-                  </p>
+                  <p className="mt-1">{selectedSearch.error ?? "Refresh this search in a moment to load processed CVs."}</p>
                 </div>
               )}
 
@@ -300,8 +315,8 @@ function SubmissionRow({ submission }: { submission: ResumeSubmission }) {
           <p className="truncate text-xs text-muted-foreground">{submission.emailSubject}</p>
         </div>
         <span className="hidden shrink-0 text-xs text-muted-foreground sm:block">{formatDate(submission.receivedAt)}</span>
-        <a href={submission.pdfLink} target="_blank" rel="noreferrer" className="shrink-0">
-          <Button variant="outline" size="sm">
+        <a href={submission.cloudinaryUrl ?? undefined} target="_blank" rel="noreferrer" className="shrink-0">
+          <Button variant="outline" size="sm" disabled={!submission.cloudinaryUrl}>
             <ExternalLink className="h-3.5 w-3.5" />
             View PDF
           </Button>
@@ -330,8 +345,8 @@ function ResultCard({ rank, submission, result }: { rank: number; submission: Re
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
           <span className="text-lg font-bold tabular-nums">{result.matchScore}%</span>
-          <a href={submission.pdfLink} target="_blank" rel="noreferrer">
-            <Button variant="outline" size="sm">
+          <a href={submission.cloudinaryUrl ?? undefined} target="_blank" rel="noreferrer">
+            <Button variant="outline" size="sm" disabled={!submission.cloudinaryUrl}>
               <ExternalLink className="h-3.5 w-3.5" />
               View PDF
             </Button>
