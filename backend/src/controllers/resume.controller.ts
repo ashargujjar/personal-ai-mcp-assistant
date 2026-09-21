@@ -6,6 +6,22 @@ import type {
   UpdateResumeSearchInput,
 } from "../schema/resume.schema";
 import { PROCESS_RESUME_SEARCH_JOB, resumeQueue } from "@/queues/resume.queue";
+import { downloadUrl } from "../services/cloudinary";
+
+function withFreshResumeUrls<T extends { applicants?: { cloudinaryPublicId: string | null }[] }>(
+  search: T,
+) {
+  return {
+    ...search,
+    applicants: search.applicants?.map((applicant) => ({
+      ...applicant,
+      cloudinaryUrl: applicant.cloudinaryPublicId
+        ? downloadUrl(applicant.cloudinaryPublicId)
+        : null,
+    })),
+  };
+}
+
 function dateRange(dateFrom: string, dateTo: string) {
   const from = new Date(`${dateFrom}T00:00:00.000Z`);
   const to = new Date(`${dateTo}T23:59:59.999Z`);
@@ -54,7 +70,7 @@ export async function createResumeSearch(
       throw error;
     }
 
-    res.status(201).json({ data: search });
+    res.status(201).json({ data: withFreshResumeUrls(search) });
   } catch (err) {
     next(err);
   }
@@ -74,7 +90,7 @@ export async function listResumeSearches(
       orderBy: { createdAt: "desc" },
     });
 
-    res.json({ data: searches });
+    res.json({ data: searches.map(withFreshResumeUrls) });
   } catch (err) {
     next(err);
   }
@@ -98,7 +114,7 @@ export async function getResumeSearch(
     });
 
     if (!search) throw new AppError("Resume search not found", 404);
-    res.json({ data: search });
+    res.json({ data: withFreshResumeUrls(search) });
   } catch (err) {
     next(err);
   }
@@ -143,7 +159,7 @@ export async function updateResumeSearch(
       include: { applicants: true },
     });
 
-    res.json({ data: search });
+    res.json({ data: withFreshResumeUrls(search) });
   } catch (err) {
     next(err);
   }

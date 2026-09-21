@@ -112,7 +112,6 @@ model ResumeApplicant {
   mimeType           String                @map("mime_type")
   fileSize           Int?                 @map("file_size")
   cloudinaryPublicId String?               @map("cloudinary_public_id")
-  cloudinaryUrl      String?               @map("cloudinary_url")
   status             ResumeApplicantStatus @default(DISCOVERED)
   errorMessage       String?               @map("error_message") @db.Text
   createdAt          DateTime              @default(now()) @map("created_at")

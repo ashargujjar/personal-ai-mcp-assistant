@@ -68,7 +68,6 @@ export async function uploadResumePdf(file: Buffer, publicId: string) {
 
   return {
     publicId,
-    url: downloadUrl(publicId),
   };
 }
 export async function deletePdf(publicId: string) {

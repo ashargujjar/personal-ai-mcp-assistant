@@ -102,7 +102,6 @@ const worker = new Worker<ResumeAttachmentJob>(
         data: {
           status: "SAVED",
           cloudinaryPublicId: uploaded.publicId,
-          cloudinaryUrl: uploaded.url,
           fileSize: pdf.length,
           errorMessage: null,
         },
