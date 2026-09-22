@@ -7,7 +7,7 @@ import {
 } from "../queues/resume-attachment.queue";
 import type { ResumeAttachmentJob } from "../queues/resume.types";
 import { downloadGmailAttachment } from "../services/gmail.service";
-import { uploadResumePdf } from "../services/cloudinary";
+import { deletePdf, uploadResumePdf } from "../services/cloudinary";
 
 function resumePublicId(userId: string, searchId: string, applicantId: string) {
   return `resume-searches/${userId}/${searchId}/${applicantId}`;
@@ -60,7 +60,7 @@ const worker = new Worker<ResumeAttachmentJob>(
     });
 
     if (!applicant) {
-      throw new Error("Resume applicant not found");
+      return { applicantId, skipped: true };
     }
 
     if (applicant.status === "SAVED") {
@@ -96,24 +96,34 @@ const worker = new Worker<ResumeAttachmentJob>(
     const publicId = resumePublicId(userId, searchId, applicant.id);
     const uploaded = await uploadResumePdf(pdf, publicId);
 
-    await prisma.$transaction([
-      prisma.resumeApplicant.update({
-        where: { id: applicant.id },
-        data: {
-          status: "SAVED",
-          cloudinaryPublicId: uploaded.publicId,
-          fileSize: pdf.length,
-          errorMessage: null,
-        },
-      }),
-      prisma.resumeSearch.update({
-        where: { id: searchId },
-        data: {
-          processed: { increment: 1 },
-          succeeded: { increment: 1 },
-        },
-      }),
-    ]);
+    try {
+      await prisma.$transaction([
+        prisma.resumeApplicant.update({
+          where: { id: applicant.id },
+          data: {
+            status: "SAVED",
+            cloudinaryPublicId: uploaded.publicId,
+            fileSize: pdf.length,
+            errorMessage: null,
+          },
+        }),
+        prisma.resumeSearch.update({
+          where: { id: searchId },
+          data: {
+            processed: { increment: 1 },
+            succeeded: { increment: 1 },
+          },
+        }),
+      ]);
+    } catch (error) {
+      await deletePdf(uploaded.publicId).catch((cleanupError) => {
+        console.error(
+          `[resume-attachment-worker] orphan cleanup failed publicId=${uploaded.publicId}`,
+          cleanupError,
+        );
+      });
+      throw error;
+    }
 
     await markSearchCompleteIfDone(searchId);
 
@@ -148,7 +158,7 @@ worker.on("failed", async (job, error) => {
         errorMessage: error.message.slice(0, 1000),
       },
     }),
-    prisma.resumeSearch.update({
+    prisma.resumeSearch.updateMany({
       where: { id: searchId },
       data: {
         processed: { increment: 1 },

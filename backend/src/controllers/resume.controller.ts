@@ -7,6 +7,10 @@ import type {
 } from "../schema/resume.schema";
 import { PROCESS_RESUME_SEARCH_JOB, resumeQueue } from "@/queues/resume.queue";
 import { downloadUrl } from "../services/cloudinary";
+import {
+  PROCESS_RESUME_PDF_DELETION_JOB,
+  resumePdfDeletionQueue,
+} from "../queues/resume-pdf-deletion.queue";
 
 function withFreshResumeUrls<T extends { applicants?: { cloudinaryPublicId: string | null }[] }>(
   search: T,
@@ -175,11 +179,39 @@ export async function deleteResumeSearch(
 
     const existing = await prisma.resumeSearch.findFirst({
       where: { id: req.params.id, userId: req.user.id },
+      include: {
+        applicants: {
+          select: {
+            id: true,
+            cloudinaryPublicId: true,
+          },
+        },
+      },
     });
 
     if (!existing) throw new AppError("Resume search not found", 404);
 
     await prisma.resumeSearch.delete({ where: { id: existing.id } });
+
+    const deletionJobs = existing.applicants
+      .filter((applicant) => applicant.cloudinaryPublicId)
+      .map((applicant) => ({
+        name: PROCESS_RESUME_PDF_DELETION_JOB,
+        data: {
+          searchId: existing.id,
+          applicantId: applicant.id,
+          userId: req.user!.id,
+          publicId: applicant.cloudinaryPublicId!,
+        },
+        opts: {
+          jobId: `resume-pdf-deletion:${applicant.id}`,
+        },
+      }));
+
+    if (deletionJobs.length > 0) {
+      await resumePdfDeletionQueue.addBulk(deletionJobs);
+    }
+
     res.status(204).send();
   } catch (err) {
     next(err);

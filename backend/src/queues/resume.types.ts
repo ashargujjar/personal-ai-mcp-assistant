@@ -9,3 +9,10 @@ export interface ResumeAttachmentJob {
   gmailMessageId: string;
   gmailAttachmentId: string;
 }
+
+export interface ResumePdfDeletionJob {
+  searchId: string;
+  applicantId: string;
+  userId: string;
+  publicId: string;
+}
