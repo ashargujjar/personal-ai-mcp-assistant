@@ -6,6 +6,7 @@ import {
   listResumeSearches,
   updateResumeSearch,
 } from "../controllers/resume.controller";
+import { runResumeAtsScan } from "../controllers/resume-scan.controller";
 import { requireAuth } from "../middleware/requireAuth";
 import { validate } from "../middleware/validate";
 import {
@@ -19,6 +20,7 @@ const router = Router();
 router.use(requireAuth);
 router.get("/", listResumeSearches);
 router.post("/", validate(createResumeSearchSchema), createResumeSearch);
+router.post("/:id/ats-scan", validate(resumeSearchIdSchema), runResumeAtsScan);
 router.get("/:id", validate(resumeSearchIdSchema), getResumeSearch);
 router.patch("/:id", validate(updateResumeSearchSchema), updateResumeSearch);
 router.delete("/:id", validate(resumeSearchIdSchema), deleteResumeSearch);
