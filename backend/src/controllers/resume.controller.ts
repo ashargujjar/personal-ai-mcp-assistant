@@ -204,7 +204,7 @@ export async function deleteResumeSearch(
           publicId: applicant.cloudinaryPublicId!,
         },
         opts: {
-          jobId: `resume-pdf-deletion:${applicant.id}`,
+          jobId: `resume-pdf-deletion-${applicant.id}`,
         },
       }));
 
