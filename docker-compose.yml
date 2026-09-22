@@ -202,6 +202,25 @@ services:
     volumes:
       - ./backend:/app
       - /app/node_modules
+  resume-ats-scan-worker:
+    build:
+      context: ./backend
+      dockerfile: dockerfile
+    restart: unless-stopped
+    command: npm run worker:resume-ats-scan
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://nexus:nexus@postgres:5432/nexus_ai
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
 
 volumes:
   postgres-data:

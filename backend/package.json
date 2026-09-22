@@ -13,6 +13,7 @@
     "postinstall": "prisma generate",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
+    "worker:resume-ats-scan": "prisma generate && tsx src/workers/resume-ats-scan.worker.ts",
     "worker:resume-attachment": "prisma generate && tsx src/workers/resume-attachment.worker.ts",
     "worker:resume-pdf-deletion": "prisma generate && tsx src/workers/resume-pdf-deletion.worker.ts",
     "worker:resume": "prisma generate && tsx src/workers/resume.worker.ts"

@@ -16,3 +16,9 @@ export interface ResumePdfDeletionJob {
   userId: string;
   publicId: string;
 }
+
+export interface ResumeAtsScanJob {
+  searchId: string;
+  applicantId: string;
+  userId: string;
+}
