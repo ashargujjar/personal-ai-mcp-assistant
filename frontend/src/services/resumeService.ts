@@ -1,4 +1,4 @@
-import type { AtsResult, ResumeSearch, ResumeSubmission } from "@/types";
+import type { ResumeSearch, ResumeSubmission } from "@/types";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000/api";
 
@@ -25,6 +25,11 @@ interface BackendResumeSearch {
   errorMessage: string | null;
   createdAt: string;
   applicants: BackendApplicant[];
+}
+
+interface RunAtsScanResponse {
+  queued: number;
+  message: string;
 }
 
 function authHeaders(token: string | null): HeadersInit {
@@ -114,7 +119,11 @@ export const resumeService = {
     await parseResponse<void>(res, "Failed to delete resume search");
   },
 
-  async runAtsScan(_submissions: ResumeSubmission[]): Promise<AtsResult[]> {
-    return [];
+  async runAtsScan(token: string | null, id: string): Promise<RunAtsScanResponse> {
+    const res = await fetch(`${API_URL}/resume-searches/${encodeURIComponent(id)}/ats-scan`, {
+      method: "POST",
+      headers: authHeaders(token),
+    });
+    return parseResponse<RunAtsScanResponse>(res, "Failed to start ATS scan");
   },
 };

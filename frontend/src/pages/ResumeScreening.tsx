@@ -91,12 +91,11 @@ export default function ResumeScreening() {
   });
 
   const scanMutation = useMutation({
-    mutationFn: () => resumeService.runAtsScan(submissions),
-    onSuccess: (scanResults) => {
+    mutationFn: () => {
       if (!selectedSearchId) return;
-      setSavedSearches((current) =>
-        current.map((search) => (search.id === selectedSearchId ? { ...search, results: scanResults } : search)),
-      );
+      return resumeService.runAtsScan(token, selectedSearchId);
+    },
+    onSuccess: () => {
       setTab("results");
     },
   });
@@ -249,6 +248,12 @@ export default function ResumeScreening() {
                   </Button>
                 )}
               </div>
+
+              {scanMutation.isError && (
+                <p className="text-sm text-destructive">
+                  {scanMutation.error instanceof Error ? scanMutation.error.message : "Failed to start ATS scan."}
+                </p>
+              )}
 
               {selectedSearch.status !== "ready" && (
                 <div className={`rounded-lg border p-3 text-sm ${selectedSearch.status === "failed" ? "border-destructive/30 text-destructive" : "border-primary/20 text-muted-foreground"}`}>
