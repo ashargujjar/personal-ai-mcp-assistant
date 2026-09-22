@@ -168,14 +168,15 @@ export async function listMessages(
 }
 
 export async function searchMessages(
-  req: Request<unknown, unknown, unknown, SearchMessagesInput>,
+  req: Request,
   res: Response,
   next: NextFunction,
 ) {
   try {
     if (!req.user) throw new AppError("Authentication required", 401);
     const gmail = await getGmailClientForUser(req.user.id);
-    const { dateFrom, dateTo, subject, maxResults } = req.query;
+    const { dateFrom, dateTo, subject, maxResults } =
+      req.query as SearchMessagesInput;
     const queryParts = ["has:attachment", "filename:pdf"];
 
     if (dateFrom) queryParts.push(`after:${dateFrom.replaceAll("-", "/")}`);

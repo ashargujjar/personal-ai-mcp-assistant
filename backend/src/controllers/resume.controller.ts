@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../db/connect";
 import { AppError } from "../middleware/errorHandler";
 import type {
@@ -11,13 +12,15 @@ import {
   PROCESS_RESUME_PDF_DELETION_JOB,
   resumePdfDeletionQueue,
 } from "../queues/resume-pdf-deletion.queue";
+import { extractResumeJobDetails } from "../services/resume-job-details.service";
 
-function withFreshResumeUrls<T extends { applicants?: { cloudinaryPublicId: string | null }[] }>(
-  search: T,
-) {
+function withFreshResumeUrls<T>(search: T) {
+  const applicants = (search as { applicants?: { cloudinaryPublicId: string | null }[] })
+    .applicants;
+
   return {
     ...search,
-    applicants: search.applicants?.map((applicant) => ({
+    applicants: applicants?.map((applicant) => ({
       ...applicant,
       cloudinaryUrl: applicant.cloudinaryPublicId
         ? downloadUrl(applicant.cloudinaryPublicId)
@@ -48,6 +51,12 @@ export async function createResumeSearch(
     const { jobTitle, description, dateFrom, dateTo } = req.body;
     const { from, to } = dateRange(dateFrom, dateTo);
 
+    const extractedJobDetails = await extractResumeJobDetails(
+      jobTitle,
+      description,
+    );
+    const { rawExtractedData, ...jobDetails } = extractedJobDetails;
+
     const search = await prisma.resumeSearch.create({
       data: {
         userId: req.user.id,
@@ -55,8 +64,19 @@ export async function createResumeSearch(
         description: description || null,
         dateFrom: from,
         dateTo: to,
+        jobDetails: {
+          create: {
+            ...jobDetails,
+            ...(rawExtractedData
+              ? {
+                  rawExtractedData:
+                    rawExtractedData as Prisma.InputJsonObject,
+                }
+              : {}),
+          },
+        },
       },
-      include: { applicants: true },
+      include: { applicants: true, jobDetails: true },
     });
     try {
       await resumeQueue.add(
@@ -90,7 +110,7 @@ export async function listResumeSearches(
 
     const searches = await prisma.resumeSearch.findMany({
       where: { userId: req.user.id },
-      include: { applicants: true },
+      include: { applicants: true, jobDetails: true },
       orderBy: { createdAt: "desc" },
     });
 
@@ -111,6 +131,7 @@ export async function getResumeSearch(
     const search = await prisma.resumeSearch.findFirst({
       where: { id: req.params.id, userId: req.user.id },
       include: {
+        jobDetails: true,
         applicants: {
           orderBy: { receivedAt: "desc" },
         },
@@ -160,7 +181,7 @@ export async function updateResumeSearch(
             }
           : {}),
       },
-      include: { applicants: true },
+      include: { applicants: true, jobDetails: true },
     });
 
     res.json({ data: withFreshResumeUrls(search) });

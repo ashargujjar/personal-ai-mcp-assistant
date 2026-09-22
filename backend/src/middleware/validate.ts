@@ -16,6 +16,8 @@ export function validate(schema: ZodTypeAny) {
       });
     }
 
+    Object.assign(req, result.data);
+
     next();
   };
 }
