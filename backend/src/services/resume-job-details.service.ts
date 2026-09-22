@@ -13,7 +13,7 @@ function modelName() {
 }
 
 function apiKey() {
-  return process.env.DEEPSEEK_API_KEY ?? process.env.OPENAI_API_KEY;
+  return process.env.DEEPSEEK_KEY ?? process.env.DEEPSEEK_API_KEY;
 }
 
 function baseUrl() {
