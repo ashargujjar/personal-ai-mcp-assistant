@@ -4,6 +4,8 @@ export interface ResumeSubmission {
   id: ID;
   candidateName: string;
   candidateEmail: string;
+  candidatePhone?: string;
+  candidateAddress?: string;
   emailSubject: string;
   receivedAt: string;
   cloudinaryUrl: string | null;

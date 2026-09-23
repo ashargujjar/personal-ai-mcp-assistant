@@ -9,6 +9,8 @@ interface BackendApplicant {
   id: string;
   candidateName: string | null;
   candidateEmail: string | null;
+  candidatePhone: string | null;
+  candidateAddress: string | null;
   emailSubject: string;
   receivedAt: string;
   cloudinaryPublicId: string | null;
@@ -76,6 +78,8 @@ function mapSearch(search: BackendResumeSearch): ResumeSearch {
       id: applicant.id,
       candidateName: applicant.candidateName ?? "Unknown candidate",
       candidateEmail: applicant.candidateEmail ?? "",
+      candidatePhone: applicant.candidatePhone ?? undefined,
+      candidateAddress: applicant.candidateAddress ?? undefined,
       emailSubject: applicant.emailSubject,
       receivedAt: applicant.receivedAt,
       cloudinaryPublicId: applicant.cloudinaryPublicId,

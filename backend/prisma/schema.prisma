@@ -133,6 +133,8 @@ model ResumeApplicant {
   gmailLabelIds      Json?                 @map("gmail_label_ids")
   candidateName      String?               @map("candidate_name")
   candidateEmail     String?               @map("candidate_email")
+  candidatePhone     String?               @map("candidate_phone")
+  candidateAddress   String?               @map("candidate_address") @db.Text
   emailSubject       String                @map("email_subject")
   receivedAt         DateTime              @map("received_at")
   originalFilename   String                @map("original_filename")

@@ -6,6 +6,17 @@ const resumeSearchIdParams = z.object({
   }),
 });
 
+export const resumeApplicantContactInfoSchema = z.object({
+  name: z.string().trim().min(1).max(200).nullable().optional(),
+  email: z.string().trim().email().max(320).nullable().optional(),
+  phone: z.string().trim().min(1).max(50).nullable().optional(),
+  address: z.string().trim().min(1).max(1000).nullable().optional(),
+});
+
+export const structuredResumeApplicantSchema = z.object({
+  contactInfo: resumeApplicantContactInfoSchema.optional(),
+});
+
 export const createResumeSearchSchema = z.object({
   body: z.object({
     jobTitle: z.string().trim().min(1, "job title is required").max(200),
@@ -33,3 +44,5 @@ export const resumeSearchIdSchema = resumeSearchIdParams;
 
 export type CreateResumeSearchInput = z.infer<typeof createResumeSearchSchema>["body"];
 export type UpdateResumeSearchInput = z.infer<typeof updateResumeSearchSchema>["body"];
+export type ResumeApplicantContactInfo = z.infer<typeof resumeApplicantContactInfoSchema>;
+export type StructuredResumeApplicant = z.infer<typeof structuredResumeApplicantSchema>;
