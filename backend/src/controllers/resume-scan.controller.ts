@@ -6,13 +6,6 @@ import {
   resumeAtsScanQueue,
 } from "../queues/resume-ats-scan.queue";
 
-function hasExtractedText(value: unknown): boolean {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-
-  const fullText = (value as { fullText?: unknown }).fullText;
-  return typeof fullText === "string" && fullText.trim().length > 0;
-}
-
 export async function runResumeAtsScan(
   req: Request<{ id: string }>,
   res: Response,
@@ -29,7 +22,6 @@ export async function runResumeAtsScan(
             id: true,
             status: true,
             cloudinaryPublicId: true,
-            pdfTextExtraction: true,
           },
         },
       },
@@ -45,25 +37,10 @@ export async function runResumeAtsScan(
       throw new AppError("ATS scan is already in progress.", 409);
     }
 
-    const applicantsWithoutText = search.applicants.filter(
-      (applicant) =>
-        applicant.status === "SAVED" &&
-        applicant.cloudinaryPublicId &&
-        !hasExtractedText(applicant.pdfTextExtraction),
-    );
-
-    if (applicantsWithoutText.length > 0) {
-      throw new AppError(
-        "Some saved resumes do not have extracted PDF text yet. Please wait for PDF processing to finish.",
-        409,
-      );
-    }
-
     const applicants = search.applicants.filter(
       (applicant) =>
         applicant.status === "SAVED" &&
-        Boolean(applicant.cloudinaryPublicId) &&
-        hasExtractedText(applicant.pdfTextExtraction),
+        Boolean(applicant.cloudinaryPublicId),
     );
 
     if (applicants.length === 0) {

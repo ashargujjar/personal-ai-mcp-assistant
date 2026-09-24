@@ -3,10 +3,12 @@ import type { ResumeSearch, ResumeSubmission } from "@/types";
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000/api";
 
 type BackendSearchStatus = "QUEUED" | "SEARCHING_GMAIL" | "PROCESSING" | "COMPLETED" | "FAILED";
+type BackendAtsStatus = "NOT_STARTED" | "QUEUED" | "SCANNING" | "COMPLETED" | "FAILED";
 type FrontendSearchStatus = ResumeSearch["status"];
 
 interface BackendApplicant {
   id: string;
+  originalFilename: string;
   candidateName: string | null;
   candidateEmail: string | null;
   candidatePhone: string | null;
@@ -15,6 +17,19 @@ interface BackendApplicant {
   receivedAt: string;
   cloudinaryPublicId: string | null;
   cloudinaryUrl?: string | null;
+}
+
+interface BackendAtsResult {
+  applicantId: string;
+  matchScore: number;
+  skills: unknown;
+  matchedSkills: unknown;
+  experienceYears: number | null;
+  experienceSummary: string | null;
+  education: string | null;
+  strengths: unknown;
+  gaps: unknown;
+  rawModelOutput: unknown;
 }
 
 interface BackendResumeSearch {
@@ -27,6 +42,10 @@ interface BackendResumeSearch {
   errorMessage: string | null;
   createdAt: string;
   applicants: BackendApplicant[];
+  atsResults?: BackendAtsResult[];
+  atsStatus: BackendAtsStatus;
+  atsProcessed: number;
+  atsTotal: number;
 }
 
 interface RunAtsScanResponse {
@@ -63,6 +82,12 @@ function toDateInput(value: string) {
   return value.slice(0, 10);
 }
 
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
 function mapSearch(search: BackendResumeSearch): ResumeSearch {
   const description = search.description ?? undefined;
   return {
@@ -74,6 +99,9 @@ function mapSearch(search: BackendResumeSearch): ResumeSearch {
     fetchedAt: search.createdAt,
     status: mapStatus(search.status),
     error: search.errorMessage ?? undefined,
+    atsStatus: search.atsStatus.toLowerCase() as ResumeSearch["atsStatus"],
+    atsProcessed: search.atsProcessed,
+    atsTotal: search.atsTotal,
     submissions: search.applicants.map((applicant): ResumeSubmission => ({
       id: applicant.id,
       candidateName: applicant.candidateName ?? "Unknown candidate",
@@ -87,7 +115,31 @@ function mapSearch(search: BackendResumeSearch): ResumeSearch {
       jobTitle: search.jobTitle,
       description,
     })),
-    results: [],
+    results: (search.atsResults ?? []).map((result) => {
+      const applicant = search.applicants.find(
+        (item) => item.id === result.applicantId,
+      );
+      const raw =
+        result.rawModelOutput &&
+        typeof result.rawModelOutput === "object" &&
+        !Array.isArray(result.rawModelOutput)
+          ? (result.rawModelOutput as { resumeData?: { projects?: unknown } })
+          : undefined;
+
+      return {
+        submissionId: result.applicantId,
+        pdfName: applicant?.originalFilename ?? "Resume PDF",
+        matchScore: result.matchScore,
+        skills: stringArray(result.skills),
+        matchedSkills: stringArray(result.matchedSkills),
+        experienceYears: result.experienceYears ?? undefined,
+        experienceSummary: result.experienceSummary ?? "",
+        education: result.education ?? undefined,
+        strengths: stringArray(result.strengths),
+        gaps: stringArray(result.gaps),
+        projects: stringArray(raw?.resumeData?.projects),
+      };
+    }),
   };
 }
 

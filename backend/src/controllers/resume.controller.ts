@@ -77,7 +77,11 @@ export async function createResumeSearch(
           },
         },
       },
-      include: { applicants: true, jobDetails: true },
+      include: {
+        applicants: true,
+        jobDetails: true,
+        atsResults: true,
+      },
     });
     try {
       await resumeQueue.add(
@@ -111,7 +115,13 @@ export async function listResumeSearches(
 
     const searches = await prisma.resumeSearch.findMany({
       where: { userId: req.user.id },
-      include: { applicants: true, jobDetails: true },
+      include: {
+        applicants: true,
+        jobDetails: true,
+        atsResults: {
+          orderBy: { matchScore: "desc" },
+        },
+      },
       orderBy: { createdAt: "desc" },
     });
 
@@ -132,6 +142,9 @@ export async function getResumeSearch(
     const search = await prisma.resumeSearch.findFirst({
       where: { id: req.params.id, userId: req.user.id },
       include: {
+        atsResults: {
+          orderBy: { matchScore: "desc" },
+        },
         jobDetails: true,
         applicants: {
           orderBy: { receivedAt: "desc" },

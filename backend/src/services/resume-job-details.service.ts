@@ -1,4 +1,4 @@
-import { ChatOpenAI } from "@langchain/openai";
+import { ChatDeepSeek } from "@langchain/deepseek";
 import {
   resumeJobDetailsDataSchema,
   type ResumeJobDetailsDataInput,
@@ -34,7 +34,7 @@ export async function extractResumeJobDetails(
     return { title: jobTitle, notes: cleanDescription };
   }
 
-  const model = new ChatOpenAI({
+  const model = new ChatDeepSeek({
     apiKey: key,
     model: modelName(),
     temperature: 0,

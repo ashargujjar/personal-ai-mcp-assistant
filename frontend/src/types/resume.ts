@@ -16,14 +16,16 @@ export interface ResumeSubmission {
 
 export interface AtsResult {
   submissionId: ID;
+  pdfName: string;
   matchScore: number;
   skills: string[];
   matchedSkills: string[];
-  experienceYears: number;
+  experienceYears?: number;
   experienceSummary: string;
   education?: string;
   strengths: string[];
   gaps: string[];
+  projects: string[];
 }
 
 export interface ResumeSearch {
@@ -35,6 +37,9 @@ export interface ResumeSearch {
   fetchedAt: string;
   submissions: ResumeSubmission[];
   results: AtsResult[];
+  atsStatus: "not_started" | "queued" | "scanning" | "completed" | "failed";
+  atsProcessed: number;
+  atsTotal: number;
   status: "queued" | "searching" | "downloading" | "processing" | "ready" | "failed";
   error?: string;
 }

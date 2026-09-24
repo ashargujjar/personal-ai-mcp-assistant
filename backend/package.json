@@ -19,6 +19,7 @@
     "worker:resume": "prisma generate && tsx src/workers/resume.worker.ts"
   },
   "dependencies": {
+    "@langchain/deepseek": "^1.1.13",
     "@prisma/client": "^5.18.0",
     "bcryptjs": "^2.4.3",
     "bullmq": "^6.3.8",

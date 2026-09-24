@@ -72,6 +72,33 @@ export default function ResumeScreening() {
   const submissions = selectedSearch?.submissions ?? [];
   const results = selectedSearch?.results ?? [];
 
+  React.useEffect(() => {
+    if (!selectedSearchId || !selectedSearch) return;
+    if (selectedSearch.atsStatus !== "queued" && selectedSearch.atsStatus !== "scanning") {
+      return;
+    }
+
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const freshSearch = await resumeService.get(token, selectedSearchId);
+        if (!cancelled) {
+          setSavedSearches((current) =>
+            current.map((item) => (item.id === freshSearch.id ? freshSearch : item)),
+          );
+        }
+      } catch {
+        // Keep the current scan state visible until the next refresh attempt.
+      }
+    };
+
+    const interval = window.setInterval(() => void refresh(), 2500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [selectedSearch, selectedSearchId, token]);
+
   const fetchMutation = useMutation({
     mutationFn: async () => {
       return resumeService.create(token, {
@@ -95,8 +122,13 @@ export default function ResumeScreening() {
       if (!selectedSearchId) return;
       return resumeService.runAtsScan(token, selectedSearchId);
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       setTab("results");
+      if (!selectedSearchId) return;
+      const freshSearch = await resumeService.get(token, selectedSearchId);
+      setSavedSearches((current) =>
+        current.map((item) => (item.id === freshSearch.id ? freshSearch : item)),
+      );
     },
   });
 
@@ -248,6 +280,13 @@ export default function ResumeScreening() {
                   </Button>
                 )}
               </div>
+              {selectedSearch.atsStatus !== "not_started" && (
+                <p className="text-sm text-muted-foreground">
+                  ATS scan: {selectedSearch.atsStatus}
+                  {selectedSearch.atsTotal > 0 &&
+                    ` (${selectedSearch.atsProcessed}/${selectedSearch.atsTotal})`}
+                </p>
+              )}
 
               {scanMutation.isError && (
                 <p className="text-sm text-destructive">
@@ -343,6 +382,7 @@ function ResultCard({ rank, submission, result }: { rank: number; submission: Re
             <p className="text-sm font-semibold">{submission.candidateName}</p>
             <span className="text-xs text-muted-foreground">{submission.candidateEmail}</span>
           </div>
+          <p className="mt-1 truncate text-xs text-muted-foreground">{result.pdfName}</p>
           <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
             <GraduationCap className="h-3 w-3" />
             {result.education ?? "Education not listed"} · {result.experienceYears} yrs experience
@@ -394,6 +434,17 @@ function ResultCard({ rank, submission, result }: { rank: number; submission: Re
           </ul>
         </div>
       </div>
+
+      {result.projects.length > 0 && (
+        <div className="mt-3">
+          <p className="mb-1 text-xs font-medium uppercase tracking-wider text-muted-foreground">Projects</p>
+          <ul className="space-y-1 text-xs">
+            {result.projects.map((project) => (
+              <li key={project} className="text-muted-foreground">{project}</li>
+            ))}
+          </ul>
+        </div>
+      )}
     </Card>
   );
 }
