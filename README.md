@@ -1,5 +1,3 @@
-<img width="756" height="801" alt="image" src="https://github.com/user-attachments/assets/24a1e517-46bd-4801-aca2-1bbeacc385fc" /># Nexus AI
-
 Nexus AI is a personal AI operating system built around a chat-first assistant. It combines a React workspace, an authenticated Node.js API, a FastAPI/LangGraph agent, MCP tools, PostgreSQL with pgvector, and asynchronous document ingestion.
 
 ## Current Status
@@ -27,6 +25,8 @@ The frontend feature pages are at different maturity levels. Assistant chat, aut
 ## Demo
 1. docker containers
 <img width="1553" height="905" alt="image" src="https://github.com/user-attachments/assets/3bb7639c-7f52-41a2-8c2a-8fa97d9fe397" />
+<img width="756" height="801" alt="image" src="https://github.com/user-attachments/assets/24a1e517-46bd-4801-aca2-1bbeacc385fc" /># Nexus AI
+
 2. saving conversation in long term memory
 <img width="1181" height="756" alt="image" src="https://github.com/user-attachments/assets/95a89175-f959-4ac1-b1ef-02ad52c63381" />
 3. Getting the data ai knows about us
