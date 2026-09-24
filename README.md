@@ -17,10 +17,13 @@ The project currently includes:
 - Persistent task CRUD operations
 - PDF document upload, versioning, metadata, download, deletion, and ingestion-job tracking
 - Redis and Celery workers for asynchronous document ingestion
+- Resume screening backed by Gmail PDF discovery, Cloudinary resume storage, PDF text extraction, applicant tracking, and ATS scoring
+- Background workers for resume discovery, resume attachment download/storage, resume PDF cleanup, and ATS scans
+- PDF-aware assistant retrieval over ingested document chunks
 - PostgreSQL and pgvector storage
 - Frontend command palette, tool activity, tool permissions, settings, webhooks, meetings, GitHub, resume screening, and voice surfaces
 
-The frontend feature pages are at different maturity levels. Assistant chat, authentication, tasks, knowledge/document workflows, Gmail, Calendar, and backend APIs have real service paths. Several other pages still use mock data for their presentation layer.
+The frontend feature pages are at different maturity levels. Assistant chat, authentication, tasks, knowledge/document workflows, Gmail, Calendar, resume screening, and backend APIs have real service paths. Several other pages still use mock data for their presentation layer.
 
 ## Architecture
 
@@ -45,6 +48,9 @@ Express + Prisma backend
                     +--> memory, Gmail, Calendar, and assistant tools
 
 PDF upload --> document/version records --> ingestion outbox --> Redis/Celery workers
+
+Resume search --> Gmail PDF discovery --> resume attachment queue --> Cloudinary/PDF text extraction
+              --> ATS scan queue --> structured match results
 ```
 
 ## Services
@@ -55,8 +61,8 @@ PDF upload --> document/version records --> ingestion outbox --> Redis/Celery wo
 | `backend/` | Node.js, Express, TypeScript, Prisma | Auth, REST APIs, OAuth integrations, document management, and chat gateway |
 | `fastapi/` | FastAPI, LangGraph, LangChain, Python | Conversational agent, graph routing, streaming responses, and ingestion workers |
 | `mcp/` | FastMCP, Python | Tool server used by the agent |
-| `postgres` | PostgreSQL with `pgvector` | Users, memories, tasks, documents, versions, ingestion jobs, and embeddings |
-| `redis` | Redis | Celery broker and ingestion queue |
+| `postgres` | PostgreSQL with `pgvector` | Users, memories, tasks, documents, versions, ingestion jobs, resume searches, applicants, ATS results, and embeddings |
+| `redis` | Redis | Celery broker plus BullMQ queues for resume workflows |
 
 ## Frontend Routes
 
@@ -92,6 +98,7 @@ The Express API is mounted under `/api`.
 | `/api/calendar` | Google Calendar connection and event operations |
 | `/api/tasks` | Authenticated task CRUD |
 | `/api/documents` | Authenticated PDF upload, listing, download, and deletion |
+| `/api/resume-searches` | Authenticated resume search, applicant, PDF text extraction, and ATS scan operations |
 
 All user-owned resources are scoped using the authenticated user identity. Request payloads are validated with Zod, and protected routes require a JWT.
 
@@ -127,6 +134,46 @@ Related documentation:
 - [Ingestion jobs](docs/ingestion-jobs.md)
 - [Ingestion contract](docs/ingestion-contract.md)
 
+## Resume Screening and ATS Scan
+
+The resume screening workflow searches a user's Gmail mailbox for PDF resume attachments in a selected date range, saves the resumes, extracts text, and scores candidates against a job description.
+
+Main flow:
+
+1. The user creates a resume search from `/resume-screening` with a job title, job description, and date range.
+2. The backend creates a `resume_searches` record and extracts structured job details.
+3. `resume-worker` searches Gmail for matching PDF attachments and creates `resume_applicants` records.
+4. `resume-attachment-worker` downloads each Gmail attachment, validates that it is a PDF, extracts resume text, stores extraction metadata, and uploads the PDF to Cloudinary.
+5. The user starts an ATS scan from the resume search.
+6. `resume-ats-scan-worker` compares each extracted resume against the job details and writes `resume_ats_results`.
+7. The frontend displays scan progress, candidate details, match scores, matched skills, gaps, strengths, experience, education, and project data.
+
+Resume data is stored in PostgreSQL using these Prisma models:
+
+- `ResumeSearch`
+- `ResumeJobDetails`
+- `ResumeApplicant`
+- `ResumeAtsResult`
+
+The resume workflow uses these backend queues and workers:
+
+- `resume-searches` through `npm run worker:resume`
+- `resume-attachments` through `npm run worker:resume-attachment`
+- `resume-pdf-deletions` through `npm run worker:resume-pdf-deletion`
+- `resume-ats-scans` through `npm run worker:resume-ats-scan`
+
+Relevant API operations:
+
+| Route | Purpose |
+|---|---|
+| `GET /api/resume-searches` | List the current user's resume searches |
+| `POST /api/resume-searches` | Create and queue a new Gmail resume search |
+| `GET /api/resume-searches/:id` | Fetch one resume search with applicants and ATS results |
+| `PATCH /api/resume-searches/:id` | Update a queued resume search |
+| `DELETE /api/resume-searches/:id` | Delete a resume search and queue stored PDF cleanup |
+| `POST /api/resume-searches/:id/ats-scan` | Queue ATS scans for saved applicants |
+| `POST /api/resume-searches/applicants/:applicantId/pdf-text-extraction` | Store extracted PDF text for an applicant |
+
 ## Running Locally
 
 ### Requirements
@@ -142,15 +189,28 @@ Create a root `.env` file. The main variables used by the current stack are:
 |---|---|---|
 | `JWT_SECRET` | Backend, FastAPI | Shared JWT signing and verification secret |
 | `DATABASE_URL` | Backend, FastAPI | PostgreSQL connection string |
-| `DEEPSEEK_KEY` | FastAPI | Chat model access |
-| `OPENAI_KEY` | MCP server, ingestion | Embeddings and related AI operations |
+| `DEEPSEEK_KEY` or `DEEPSEEK_API_KEY` | FastAPI, backend resume workers | Chat, job detail extraction, and ATS resume scoring |
+| `DEEPSEEK_MODEL` | Backend resume workers | Optional DeepSeek model override, defaults to `deepseek-chat` |
+| `DEEPSEEK_BASE_URL` | Backend resume workers | Optional DeepSeek-compatible API base URL |
+| `OPENAI_KEY` | MCP server | Memory embeddings |
+| `OPENAI_API_KEY` | FastAPI ingestion and retrieval | Document chunk embeddings |
+| `OPENAI_EMBEDDING_MODEL` | FastAPI ingestion and retrieval | Embedding model, defaults to `text-embedding-3-small` |
+| `OPENAI_QUERY_MODEL` | FastAPI retrieval | Optional query expansion model |
 | `PYTHON_URL` | Backend | Backend-to-FastAPI URL |
 | `NODE_URL` | MCP server | MCP-to-backend URL |
 | `MCP_URL` | FastAPI | FastAPI-to-MCP URL |
 | `CORS_ORIGIN` | Backend | Allowed frontend origin |
-| Google OAuth variables | Backend | Gmail and Calendar OAuth configuration |
-| Cloudinary variables | Backend | PDF storage configuration |
+| `FRONTEND_URL` | Backend OAuth callbacks | Redirect target after OAuth connection |
+| `GOOGLE_CLIENT_ID` | Backend auth, frontend | Google login client ID |
+| `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REDIRECT_URI` | Backend | Gmail OAuth and resume search mailbox access |
+| `CALENDAR_REDIRECT_URI` | Backend | Google Calendar OAuth callback override |
+| `CLOUDINARY_CLOUD_NAME` or `CLOUDINARY_NAME` | Backend, FastAPI ingestion | PDF storage cloud name |
+| `CLOUDINARY_API_KEY` or `CLOUDINARY_API` | Backend, FastAPI ingestion | PDF storage API key |
+| `CLOUDINARY_API_SECRET` or `CLOUDINARY_SECRET` | Backend, FastAPI ingestion | PDF storage API secret |
 | `CELERY_BROKER_URL` | Ingestion services | Redis broker URL |
+| `REDIS_URL` | Backend workers | BullMQ resume workflow queue connection |
+| `VITE_API_URL` | Frontend | Browser-to-backend API URL |
+| `VITE_GOOGLE_CLIENT_ID` | Frontend | Optional Google login client ID |
 
 The exact provider-specific variable names can be found in the service environment examples and source configuration.
 
@@ -170,6 +230,13 @@ The services are available at:
 | MCP server | http://localhost:8001 |
 | PostgreSQL | localhost:5432 |
 | Redis | localhost:6379 |
+
+The Compose stack also starts the resume workflow workers:
+
+- `resume-worker`
+- `resume-attachment-worker`
+- `resume-pdf-deletion-worker`
+- `resume-ats-scan-worker`
 
 To stop the stack:
 
@@ -199,7 +266,13 @@ npm install
 npm run dev
 npm run typecheck
 npm run build
+npm run worker:resume
+npm run worker:resume-attachment
+npm run worker:resume-pdf-deletion
+npm run worker:resume-ats-scan
 ```
+
+The worker commands are separate long-running processes. When using Docker Compose, they are started as separate services automatically.
 
 ### FastAPI and MCP
 
@@ -210,6 +283,8 @@ Install the dependencies listed in:
 
 The Docker Compose setup is the recommended way to run the Python services together with their dependent services.
 
+FastAPI exposes `GET /` for a basic status response and `POST /chat` for streaming agent interaction. The chat graph includes Gmail, Calendar, Task, memory, and PDF/document retrieval paths.
+
 ## Database and Migrations
 
 Prisma schema and migrations are stored in `backend/prisma`.
@@ -219,6 +294,15 @@ cd backend
 npx prisma generate
 npx prisma migrate dev
 ```
+
+For an already-running Docker Postgres container, apply pending migrations from the backend directory with:
+
+```bash
+cd backend
+DATABASE_URL=postgresql://nexus:nexus@localhost:5432/nexus_ai npx prisma migrate deploy
+```
+
+The current migration history includes the resume search, Gmail attachment, job details, PDF text extraction, ATS result, and ATS scan status tables/fields through `20260923130000_add_resume_ats_scan_status`.
 
 The Docker backend uses the PostgreSQL service from `docker-compose.yml`. Do not run destructive database commands against a shared or production database.
 
@@ -241,7 +325,8 @@ node tests/document-version-migration.cjs
 - Gmail and Google Calendar require valid OAuth credentials and configured redirect URLs.
 - Some frontend pages are still presentation-first and use mock data or local mock services.
 - GitHub integration is represented in the frontend but does not currently have a corresponding backend route.
-- The voice, meetings, resume screening, webhooks, tool activity, and tool permissions surfaces are not all backed by complete production workflows yet.
+- The voice, meetings, webhooks, tool activity, and tool permissions surfaces are not all backed by complete production workflows yet.
+- Resume screening requires Gmail OAuth, Cloudinary PDF storage credentials, Redis, the resume workers, and an AI provider key for ATS scoring.
 - LangGraph conversation checkpoints are in memory and are lost when FastAPI restarts.
 - There is no durable conversation list for browsing and resuming old chat threads.
 - Chat requests are rate-limited at the Node layer; FastAPI and MCP do not currently apply independent rate limits.
