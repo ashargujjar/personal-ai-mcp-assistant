@@ -1,4 +1,4 @@
-# Nexus AI
+<img width="756" height="801" alt="image" src="https://github.com/user-attachments/assets/24a1e517-46bd-4801-aca2-1bbeacc385fc" /># Nexus AI
 
 Nexus AI is a personal AI operating system built around a chat-first assistant. It combines a React workspace, an authenticated Node.js API, a FastAPI/LangGraph agent, MCP tools, PostgreSQL with pgvector, and asynchronous document ingestion.
 
@@ -24,6 +24,52 @@ The project currently includes:
 - Frontend command palette, tool activity, tool permissions, settings, webhooks, meetings, GitHub, resume screening, and voice surfaces
 
 The frontend feature pages are at different maturity levels. Assistant chat, authentication, tasks, knowledge/document workflows, Gmail, Calendar, resume screening, and backend APIs have real service paths. Several other pages still use mock data for their presentation layer.
+## Demo
+1. docker containers
+<img width="1553" height="905" alt="image" src="https://github.com/user-attachments/assets/3bb7639c-7f52-41a2-8c2a-8fa97d9fe397" />
+2. saving conversation in long term memory
+<img width="1181" height="756" alt="image" src="https://github.com/user-attachments/assets/95a89175-f959-4ac1-b1ef-02ad52c63381" />
+3. Getting the data ai knows about us
+   <img width="1155" height="612" alt="image" src="https://github.com/user-attachments/assets/19ad3833-bf6a-4598-bd78-2ccc06aaae9a" />
+4. Sending mail to recipent humman in the loop for approval
+   <img width="742" height="483" alt="image" src="https://github.com/user-attachments/assets/e125e085-00ab-4276-9e96-a0c3ef811898" />
+   <img width="1810" height="932" alt="image" src="https://github.com/user-attachments/assets/201b83ef-73bd-4f51-a5df-f0ade61336bd" />
+5. Rag pdf upload
+   <img width="1477" height="565" alt="image" src="https://github.com/user-attachments/assets/655de81c-dcc6-46e7-bb1c-e4f9b76648fc" />
+   <img width="1143" height="770" alt="image" src="https://github.com/user-attachments/assets/8e20daf8-1d88-41aa-8be2-8230936d6ec8" />
+
+6. Multi workflow run
+   <img width="883" height="470" alt="image" src="https://github.com/user-attachments/assets/7df8664f-ebbd-40c7-9d5f-913ddeae21a1" />
+<img width="1125" height="747" alt="image" src="https://github.com/user-attachments/assets/42f72d4d-c787-40cb-b65d-e1acd6e3e0bc" />
+<img width="756" height="801" alt="image" src="https://github.com/user-attachments/assets/ef8513f5-dc46-4a5e-9332-71dd1e9f85e8" />
+calender event also created
+<img width="1876" height="723" alt="image" src="https://github.com/user-attachments/assets/59748e77-5a38-4719-bf1b-8b882c9819e5" />
+<img width="1893" height="956" alt="image" src="https://github.com/user-attachments/assets/60f1fca6-7827-4ed9-abe3-4781fbf0c718" />
+7. Resume screening
+   cv's on the emails
+   <img width="1505" height="742" alt="image" src="https://github.com/user-attachments/assets/ecb8c64f-5b8d-4028-8e02-77da93823414" />
+   cv's get from email
+   <img width="1172" height="680" alt="image" src="https://github.com/user-attachments/assets/6c6fe08b-c64f-4816-a077-ae97d23b396e" />
+   ATS scan performed on each cv
+   <img width="1547" height="753" alt="image" src="https://github.com/user-attachments/assets/3023aedd-769b-41b1-b68b-2327952ec886" />
+   <img width="1162" height="642" alt="image" src="https://github.com/user-attachments/assets/3a0e04c2-60e5-43b1-ab1d-1a571042d1d1" />
+   <img width="1161" height="623" alt="image" src="https://github.com/user-attachments/assets/7bdf91f7-d2ca-4831-b94d-48a3f85d2f37" />
+   <img width="1162" height="676" alt="image" src="https://github.com/user-attachments/assets/cc1539f0-ff85-4503-9fd5-f833e5091f4c" />
+![Uploading image.png…]()
+
+
+
+
+
+
+
+
+
+
+
+
+   
+
 
 ## Architecture
 
