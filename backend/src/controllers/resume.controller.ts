@@ -4,6 +4,7 @@ import { prisma } from "../db/connect";
 import { AppError } from "../middleware/errorHandler";
 import type {
   CreateResumeSearchInput,
+  ResumePdfTextExtractionInput,
   UpdateResumeSearchInput,
 } from "../schema/resume.schema";
 import { PROCESS_RESUME_SEARCH_JOB, resumeQueue } from "@/queues/resume.queue";
@@ -140,6 +141,43 @@ export async function getResumeSearch(
 
     if (!search) throw new AppError("Resume search not found", 404);
     res.json({ data: withFreshResumeUrls(search) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function storeResumePdfTextExtraction(
+  req: Request<{ applicantId: string }, unknown, ResumePdfTextExtractionInput>,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    if (!req.user) throw new AppError("Authentication required", 401);
+
+    const applicant = await prisma.resumeApplicant.findFirst({
+      where: {
+        id: req.params.applicantId,
+        userId: req.user.id,
+      },
+    });
+
+    if (!applicant) throw new AppError("Resume applicant not found", 404);
+
+    const updatedApplicant = await prisma.resumeApplicant.update({
+      where: { id: applicant.id },
+      data: {
+        pdfTextExtraction:
+          req.body.extraction as unknown as Prisma.InputJsonObject,
+        pdfTextExtractedAt: new Date(),
+      },
+      select: {
+        id: true,
+        pdfTextExtraction: true,
+        pdfTextExtractedAt: true,
+      },
+    });
+
+    res.json({ data: updatedApplicant });
   } catch (err) {
     next(err);
   }

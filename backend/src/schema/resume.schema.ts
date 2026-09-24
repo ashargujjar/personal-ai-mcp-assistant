@@ -6,6 +6,42 @@ const resumeSearchIdParams = z.object({
   }),
 });
 
+const pdfWordSchema = z
+  .object({
+    text: z.string(),
+    x0: z.number(),
+    top: z.number(),
+    x1: z.number(),
+    bottom: z.number(),
+  })
+  .passthrough();
+
+const pdfPageSchema = z.object({
+  pageNumber: z.number().int().positive(),
+  width: z.number().nonnegative(),
+  height: z.number().nonnegative(),
+  rawText: z.string(),
+  words: z.array(pdfWordSchema),
+  lines: z.array(z.unknown()),
+  tables: z.array(z.unknown()),
+});
+
+export const resumePdfTextExtractionSchema = z.object({
+  params: z.object({
+    applicantId: z.string().min(1, "applicantId is required"),
+  }),
+  body: z.object({
+    extraction: z.object({
+      source: z.object({
+        filename: z.string().min(1),
+        pageCount: z.number().int().nonnegative(),
+      }),
+      pages: z.array(pdfPageSchema),
+      fullText: z.string(),
+    }),
+  }),
+});
+
 export const resumeApplicantContactInfoSchema = z.object({
   name: z.string().trim().min(1).max(200).nullable().optional(),
   email: z.string().trim().email().max(320).nullable().optional(),
@@ -44,5 +80,8 @@ export const resumeSearchIdSchema = resumeSearchIdParams;
 
 export type CreateResumeSearchInput = z.infer<typeof createResumeSearchSchema>["body"];
 export type UpdateResumeSearchInput = z.infer<typeof updateResumeSearchSchema>["body"];
+export type ResumePdfTextExtractionInput = z.infer<
+  typeof resumePdfTextExtractionSchema
+>["body"];
 export type ResumeApplicantContactInfo = z.infer<typeof resumeApplicantContactInfoSchema>;
 export type StructuredResumeApplicant = z.infer<typeof structuredResumeApplicantSchema>;

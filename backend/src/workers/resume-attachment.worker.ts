@@ -1,4 +1,5 @@
 import { Job, Worker } from "bullmq";
+import type { Prisma } from "@prisma/client";
 import { redisConnection } from "../config/redis";
 import { prisma } from "../db/connect";
 import {
@@ -8,6 +9,7 @@ import {
 import type { ResumeAttachmentJob } from "../queues/resume.types";
 import { downloadGmailAttachment } from "../services/gmail.service";
 import { deletePdf, uploadResumePdf } from "../services/cloudinary";
+import { extractResumePdfText } from "../services/resume-pdf-text.service";
 
 function resumePublicId(userId: string, searchId: string, applicantId: string) {
   return `resume-searches/${userId}/${searchId}/${applicantId}`;
@@ -85,6 +87,11 @@ const worker = new Worker<ResumeAttachmentJob>(
       throw new Error("Attachment is not a valid PDF");
     }
 
+    const pdfTextExtraction = await extractResumePdfText(
+      pdf,
+      applicant.originalFilename,
+    );
+
     await prisma.resumeApplicant.update({
       where: { id: applicant.id },
       data: {
@@ -104,6 +111,9 @@ const worker = new Worker<ResumeAttachmentJob>(
             status: "SAVED",
             cloudinaryPublicId: uploaded.publicId,
             fileSize: pdf.length,
+            pdfTextExtraction:
+              pdfTextExtraction as unknown as Prisma.InputJsonObject,
+            pdfTextExtractedAt: new Date(),
             errorMessage: null,
           },
         }),

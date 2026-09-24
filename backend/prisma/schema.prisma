@@ -66,6 +66,14 @@ enum ResumeApplicantStatus {
   FAILED
 }
 
+enum ResumeAtsScanStatus {
+  NOT_STARTED
+  QUEUED
+  SCANNING
+  COMPLETED
+  FAILED
+}
+
 model ResumeSearch {
   id           String             @id @default(cuid())
   userId       String             @map("user_id")
@@ -83,10 +91,19 @@ model ResumeSearch {
   updatedAt    DateTime           @updatedAt @map("updated_at")
   startedAt    DateTime?          @map("started_at")
   finishedAt   DateTime?          @map("finished_at")
+  atsStatus    ResumeAtsScanStatus @default(NOT_STARTED) @map("ats_status")
+  atsTotal     Int                @default(0) @map("ats_total")
+  atsProcessed Int                @default(0) @map("ats_processed")
+  atsSucceeded Int                @default(0) @map("ats_succeeded")
+  atsFailed    Int                @default(0) @map("ats_failed")
+  atsErrorMessage String?         @map("ats_error_message") @db.Text
+  atsStartedAt DateTime?          @map("ats_started_at")
+  atsFinishedAt DateTime?         @map("ats_finished_at")
 
   user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   applicants ResumeApplicant[]
   jobDetails ResumeJobDetails?
+  atsResults ResumeAtsResult[]
 
   @@index([userId, createdAt])
   @@index([userId, status])
@@ -135,6 +152,8 @@ model ResumeApplicant {
   candidateEmail     String?               @map("candidate_email")
   candidatePhone     String?               @map("candidate_phone")
   candidateAddress   String?               @map("candidate_address") @db.Text
+  pdfTextExtraction  Json?                 @map("pdf_text_extraction")
+  pdfTextExtractedAt DateTime?             @map("pdf_text_extracted_at")
   emailSubject       String                @map("email_subject")
   receivedAt         DateTime              @map("received_at")
   originalFilename   String                @map("original_filename")
@@ -147,11 +166,38 @@ model ResumeApplicant {
   updatedAt          DateTime              @updatedAt @map("updated_at")
 
   search ResumeSearch @relation(fields: [searchId], references: [id], onDelete: Cascade)
+  atsResult ResumeAtsResult?
 
   @@unique([searchId, gmailMessageId, gmailAttachmentId])
   @@index([userId, createdAt])
   @@index([searchId, status])
   @@map("resume_applicants")
+}
+
+model ResumeAtsResult {
+  id                String   @id @default(cuid())
+  searchId          String   @map("search_id")
+  applicantId       String   @unique @map("applicant_id")
+  userId            String   @map("user_id")
+  matchScore        Int      @map("match_score")
+  skills            Json
+  matchedSkills     Json     @map("matched_skills")
+  experienceYears   Int?     @map("experience_years")
+  experienceSummary String?  @map("experience_summary") @db.Text
+  education         String?  @db.Text
+  strengths         Json
+  gaps              Json
+  rawModelOutput    Json?    @map("raw_model_output")
+  scanVersion       String   @default("resume-ats-v1") @map("scan_version")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  search    ResumeSearch    @relation(fields: [searchId], references: [id], onDelete: Cascade)
+  applicant ResumeApplicant @relation(fields: [applicantId], references: [id], onDelete: Cascade)
+
+  @@index([searchId, matchScore])
+  @@index([userId, createdAt])
+  @@map("resume_ats_results")
 }
 
 model Memory {
