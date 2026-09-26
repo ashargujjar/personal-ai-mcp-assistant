@@ -1,0 +1,10 @@
+ALTER TABLE "github_reviews"
+DROP COLUMN "commit_sha",
+DROP COLUMN "file_count",
+DROP COLUMN "source_file_count",
+DROP COLUMN "config_file_count",
+DROP COLUMN "documentation_file_count",
+DROP COLUMN "test_file_count",
+DROP COLUMN "manifest_file_count",
+DROP COLUMN "unknown_file_count",
+DROP COLUMN "classification";

@@ -27,11 +27,29 @@ const worker = new Worker<GitHubRepositoryReviewJob>(
     const cleanupSummary = await cleanupRepositoryForScan(workspacePath);
     const fileClassification = await classifyRepositoryFiles(workspacePath);
 
+    await prisma.repositoryManifest.create({
+      data: {
+        reviewId: job.data.reviewId,
+        repositoryId: job.data.repositoryId,
+        repositoryUrl: job.data.repositoryUrl,
+        owner: job.data.owner,
+        repository: job.data.repository,
+        commitSha,
+        fileCount: fileClassification.files.length,
+        sourceFileCount: fileClassification.counts.source,
+        configFileCount: fileClassification.counts.configuration,
+        documentationFileCount: fileClassification.counts.documentation,
+        testFileCount: fileClassification.counts.test,
+        manifestFileCount: fileClassification.counts["dependency-manifest"],
+        unknownFileCount: fileClassification.counts.unknown,
+        files: fileClassification.files,
+      },
+    });
+
     await prisma.githubReview.update({
       where: { id: job.data.reviewId },
       data: {
         status: "PROCESSING",
-        commitSha,
       },
     });
 

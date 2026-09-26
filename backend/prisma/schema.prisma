@@ -215,16 +215,40 @@ model GitHubReview {
   repositoryUrl  String            @map("repository_url")
   owner          String
   repository     String
-  commitSha      String?           @map("commit_sha")
   status         GitHubReviewStatus @default(QUEUED)
   createdAt      DateTime          @default(now()) @map("created_at")
   updatedAt      DateTime          @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  manifest RepositoryManifest?
 
   @@index([userId, createdAt])
   @@index([status, createdAt])
   @@map("github_reviews")
+}
+
+model RepositoryManifest {
+  id                    String   @id @default(cuid())
+  reviewId              String   @unique @map("review_id")
+  repositoryId          Int      @map("repository_id")
+  repositoryUrl         String   @map("repository_url")
+  owner                 String
+  repository            String
+  commitSha             String   @map("commit_sha")
+  fileCount             Int      @default(0) @map("file_count")
+  sourceFileCount       Int      @default(0) @map("source_file_count")
+  configFileCount       Int      @default(0) @map("config_file_count")
+  documentationFileCount Int     @default(0) @map("documentation_file_count")
+  testFileCount         Int      @default(0) @map("test_file_count")
+  manifestFileCount     Int      @default(0) @map("manifest_file_count")
+  unknownFileCount      Int      @default(0) @map("unknown_file_count")
+  files                 Json
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  review GitHubReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  @@index([repositoryId, commitSha])
+  @@map("repository_manifests")
 }
 
 model Memory {

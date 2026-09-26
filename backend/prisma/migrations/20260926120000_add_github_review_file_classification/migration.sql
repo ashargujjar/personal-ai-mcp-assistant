@@ -1,0 +1,9 @@
+ALTER TABLE "github_reviews"
+ADD COLUMN "file_count" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN "source_file_count" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN "config_file_count" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN "documentation_file_count" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN "test_file_count" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN "manifest_file_count" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN "unknown_file_count" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN "classification" JSONB;
