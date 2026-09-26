@@ -32,11 +32,11 @@ export const githubService = {
     const json = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(json?.message ?? "Could not verify this GitHub repository");
 
-    const verified = json.data as { repositoryUrl: string; fullName: string };
+    const queued = json.data as { reviewId: string };
 
     return {
-      repositoryUrl: verified.repositoryUrl,
-      repositoryName: verified.fullName,
+      repositoryUrl: input.repositoryUrl,
+      repositoryName: input.repositoryUrl.replace(/^https?:\/\/(www\.)?github\.com\//i, "").replace(/\.git$/, ""),
       branch: "main",
       status: "reviewing",
       evaluatedAt: new Date().toISOString(),
@@ -47,6 +47,7 @@ export const githubService = {
       findings: [],
       agentChecks: [],
       nextActions: [],
+      reviewId: queued.reviewId,
     };
   },
 };

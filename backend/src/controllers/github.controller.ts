@@ -5,6 +5,7 @@ import {
   githubReviewQueue,
   PROCESS_GITHUB_REVIEW_JOB,
 } from "../queues/github.queue";
+import { prisma } from "../db/connect";
 
 interface GitHubRepositoryResponse {
   id: number;
@@ -65,33 +66,29 @@ export async function reviewRepository(
       throw new AppError("Private repositories are not supported. Please provide a public GitHub repository.", 403);
     }
 
-    const job = await githubReviewQueue.add(PROCESS_GITHUB_REVIEW_JOB, {
+    const review = await prisma.githubReview.create({
+      data: {
+        userId: req.user.id,
+        repositoryId: repositoryData.id,
+        repositoryUrl: repositoryData.html_url,
+        owner,
+        repository,
+      },
+    });
+
+    await githubReviewQueue.add(PROCESS_GITHUB_REVIEW_JOB, {
+      reviewId: review.id,
       userId: req.user.id,
       repositoryUrl: repositoryData.html_url,
       owner,
       repository,
       repositoryId: repositoryData.id,
+    }, {
+      jobId: review.id,
     });
 
     res.status(200).json({
-      data: {
-        valid: true,
-        public: true,
-        owner,
-        repository,
-        repositoryUrl: repositoryData.html_url,
-        id: repositoryData.id,
-        name: repositoryData.name,
-        fullName: repositoryData.full_name,
-        description: repositoryData.description,
-        defaultBranch: repositoryData.default_branch,
-        language: repositoryData.language,
-        stars: repositoryData.stargazers_count,
-        openIssues: repositoryData.open_issues_count,
-        updatedAt: repositoryData.updated_at,
-        reviewStatus: "queued",
-        reviewJobId: job.id,
-      },
+      data: { reviewId: review.id },
     });
   } catch (error) {
     next(error);

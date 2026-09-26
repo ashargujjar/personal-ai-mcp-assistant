@@ -59,6 +59,7 @@ export interface GitHubReviewMetric {
 }
 
 export interface GitHubReviewResult {
+  reviewId?: string;
   repositoryUrl: string;
   repositoryName: string;
   branch: string;

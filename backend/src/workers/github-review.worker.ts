@@ -5,6 +5,12 @@ import {
   PROCESS_GITHUB_REVIEW_JOB,
 } from "../queues/github.queue";
 import type { GitHubRepositoryReviewJob } from "../queues/github.types";
+import { createGitHubWorkspace } from "../services/github-workspace.service";
+import {
+  cloneGitHubRepository,
+  getClonedRepositoryCommitSha,
+} from "../services/github-clone.service";
+import { prisma } from "../db/connect";
 
 const worker = new Worker<GitHubRepositoryReviewJob>(
   GITHUB_REVIEW_QUEUE_NAME,
@@ -13,14 +19,27 @@ const worker = new Worker<GitHubRepositoryReviewJob>(
       throw new Error(`Unsupported GitHub job: ${job.name}`);
     }
 
-    // Review logic will be added here later.
+    const workspacePath = await createGitHubWorkspace(job.data.reviewId);
+    await cloneGitHubRepository(job.data.repositoryUrl, workspacePath);
+    const commitSha = await getClonedRepositoryCommitSha(workspacePath);
+
+    await prisma.githubReview.update({
+      where: { id: job.data.reviewId },
+      data: {
+        status: "PROCESSING",
+        commitSha,
+      },
+    });
+
     console.log(
-      `[github-review-worker] received repository=${job.data.owner}/${job.data.repository}`,
+      `[github-review-worker] clone succeeded repository=${job.data.owner}/${job.data.repository} commit=${commitSha} workspace=${workspacePath}`,
     );
 
     return {
       repositoryId: job.data.repositoryId,
-      status: "queued-for-review",
+      workspacePath,
+      cloneStatus: "success",
+      commitSha,
     };
   },
   {

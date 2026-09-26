@@ -28,6 +28,7 @@ model User {
   tasks                Task[]
   documents            Document[]
   resumeSearches       ResumeSearch[]
+  githubReviews        GitHubReview[]
 
   @@map("users")
 }
@@ -198,6 +199,32 @@ model ResumeAtsResult {
   @@index([searchId, matchScore])
   @@index([userId, createdAt])
   @@map("resume_ats_results")
+}
+
+enum GitHubReviewStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model GitHubReview {
+  id             String            @id @default(cuid())
+  userId         String            @map("user_id")
+  repositoryId   Int               @map("repository_id")
+  repositoryUrl  String            @map("repository_url")
+  owner          String
+  repository     String
+  commitSha      String?           @map("commit_sha")
+  status         GitHubReviewStatus @default(QUEUED)
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@map("github_reviews")
 }
 
 model Memory {
