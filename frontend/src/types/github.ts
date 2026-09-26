@@ -36,3 +36,39 @@ export interface Issue {
   createdAt: string;
   labels: string[];
 }
+
+export type GitHubReviewSeverity = "critical" | "high" | "medium" | "low";
+
+export type GitHubReviewCategory = "Security" | "Bugs" | "Quality" | "Testing" | "Dependencies";
+
+export interface GitHubReviewFinding {
+  id: ID;
+  category: GitHubReviewCategory;
+  severity: GitHubReviewSeverity;
+  title: string;
+  summary: string;
+  location: string;
+  recommendation: string;
+}
+
+export interface GitHubReviewMetric {
+  label: string;
+  value: string | number;
+  detail: string;
+  score: number;
+}
+
+export interface GitHubReviewResult {
+  repositoryUrl: string;
+  repositoryName: string;
+  branch: string;
+  status: "ready" | "reviewing" | "complete";
+  evaluatedAt: string;
+  overallScore: number;
+  riskLevel: "Low" | "Medium" | "High" | "Critical";
+  summary: string;
+  metrics: GitHubReviewMetric[];
+  findings: GitHubReviewFinding[];
+  agentChecks: string[];
+  nextActions: string[];
+}

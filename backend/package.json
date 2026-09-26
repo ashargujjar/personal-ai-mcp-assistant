@@ -16,7 +16,8 @@
     "worker:resume-ats-scan": "prisma generate && tsx src/workers/resume-ats-scan.worker.ts",
     "worker:resume-attachment": "prisma generate && tsx src/workers/resume-attachment.worker.ts",
     "worker:resume-pdf-deletion": "prisma generate && tsx src/workers/resume-pdf-deletion.worker.ts",
-    "worker:resume": "prisma generate && tsx src/workers/resume.worker.ts"
+    "worker:resume": "prisma generate && tsx src/workers/resume.worker.ts",
+    "worker:github-review": "tsx src/workers/github-review.worker.ts"
   },
   "dependencies": {
     "@langchain/deepseek": "^1.1.13",
