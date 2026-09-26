@@ -11,6 +11,7 @@ import {
   getClonedRepositoryCommitSha,
 } from "../services/github-clone.service";
 import { prisma } from "../db/connect";
+import { cleanupRepositoryForScan } from "../services/github-repository-cleanup.service";
 
 const worker = new Worker<GitHubRepositoryReviewJob>(
   GITHUB_REVIEW_QUEUE_NAME,
@@ -22,6 +23,7 @@ const worker = new Worker<GitHubRepositoryReviewJob>(
     const workspacePath = await createGitHubWorkspace(job.data.reviewId);
     await cloneGitHubRepository(job.data.repositoryUrl, workspacePath);
     const commitSha = await getClonedRepositoryCommitSha(workspacePath);
+    const cleanupSummary = await cleanupRepositoryForScan(workspacePath);
 
     await prisma.githubReview.update({
       where: { id: job.data.reviewId },
@@ -32,7 +34,7 @@ const worker = new Worker<GitHubRepositoryReviewJob>(
     });
 
     console.log(
-      `[github-review-worker] clone succeeded repository=${job.data.owner}/${job.data.repository} commit=${commitSha} workspace=${workspacePath}`,
+      `[github-review-worker] clone succeeded repository=${job.data.owner}/${job.data.repository} commit=${commitSha} workspace=${workspacePath} removed_dirs=${cleanupSummary.removedDirectories} removed_files=${cleanupSummary.removedFiles}`,
     );
 
     return {
@@ -40,6 +42,7 @@ const worker = new Worker<GitHubRepositoryReviewJob>(
       workspacePath,
       cloneStatus: "success",
       commitSha,
+      cleanupSummary,
     };
   },
   {
