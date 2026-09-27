@@ -25,7 +25,9 @@ const findingCategories = ["Security", "Bugs", "Quality", "Testing", "Dependenci
 export default function GitHub() {
   const [repositoryUrl, setRepositoryUrl] = useState("");
   const [branch, setBranch] = useState("main");
-  const [scope, setScope] = useState("full");
+  const scope = "security";
+  const [issuePrompt, setIssuePrompt] = useState("");
+  const [issueDraft, setIssueDraft] = useState<string | null>(null);
   const { token } = useAuth();
   const reviewMutation = useMutation({
     mutationFn: (url: string) => githubService.evaluateRepository({ repositoryUrl: url, token }),
@@ -35,6 +37,12 @@ export default function GitHub() {
   function runReview(event: React.FormEvent) {
     event.preventDefault();
     reviewMutation.mutate(repositoryUrl);
+  }
+
+  function prepareIssue(event: React.FormEvent) {
+    event.preventDefault();
+    if (!issuePrompt.trim()) return;
+    setIssueDraft(issuePrompt.trim());
   }
 
   const findingsByCategory = review?.findings.reduce<Record<string, GitHubReviewFinding[]>>((groups, finding) => {
@@ -71,10 +79,7 @@ export default function GitHub() {
               <select value={branch} onChange={(event) => setBranch(event.target.value)} className="h-8 appearance-none rounded-md border border-input bg-background px-3 pr-8 text-foreground"><option>main</option><option>develop</option><option>master</option></select>
               <ChevronDown className="pointer-events-none absolute right-2 top-2 h-3.5 w-3.5" />
             </span></label>
-            <label className="flex items-center gap-2"><span>Scope</span><span className="relative">
-              <select value={scope} onChange={(event) => setScope(event.target.value)} className="h-8 appearance-none rounded-md border border-input bg-background px-3 pr-8 text-foreground"><option value="full">Full repository</option><option value="security">Security only</option><option value="quality">Quality only</option></select>
-              <ChevronDown className="pointer-events-none absolute right-2 top-2 h-3.5 w-3.5" />
-            </span></label>
+            <span className="flex items-center gap-2"><span>Scope</span><Badge variant="outline">Security only</Badge></span>
             <span className="flex items-center gap-1.5 py-1.5"><LockKeyhole className="h-3.5 w-3.5" /> Public repositories only</span>
           </div>
         </form>
@@ -114,6 +119,46 @@ export default function GitHub() {
                 );
               })}
             </div>
+          </Card>
+
+          <Card className="p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="font-semibold">Open a GitHub issue</h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Describe the problem and the backend agent will create the issue later.
+                </p>
+              </div>
+              <Badge variant="outline">Frontend preview</Badge>
+            </div>
+            <form onSubmit={prepareIssue} className="mt-4 space-y-3">
+              <textarea
+                value={issuePrompt}
+                onChange={(event) => setIssuePrompt(event.target.value)}
+                placeholder="Example: Open a high-priority issue for the missing authorization check in the repository..."
+                className="min-h-28 w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                aria-label="Describe the GitHub issue to open"
+              />
+              <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+                <p className="text-xs text-muted-foreground">
+                  The prompt will later be sent to the issue-creation agent.
+                </p>
+                <Button type="submit" disabled={!issuePrompt.trim()}>
+                  <ArrowRight /> Prepare issue
+                </Button>
+              </div>
+            </form>
+            {issueDraft && (
+              <div className="mt-4 rounded-md border border-primary/20 bg-primary/[0.04] p-4">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <Check className="h-4 w-4 text-success" /> Issue request prepared
+                </div>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">{issueDraft}</p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Backend issue creation is not connected yet.
+                </p>
+              </div>
+            )}
           </Card>
         </>
       )}

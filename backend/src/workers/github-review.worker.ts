@@ -13,6 +13,11 @@ import {
 import { prisma } from "../db/connect";
 import { cleanupRepositoryForScan } from "../services/github-repository-cleanup.service";
 import { classifyRepositoryFiles } from "../services/github-file-classification.service";
+import {
+  chunkLoadedRepositoryFiles,
+  loadPreparedRepositoryFiles,
+  prepareGitHubRepositoryForAnalysis,
+} from "../services/github-analyzer-preparation.service";
 
 const worker = new Worker<GitHubRepositoryReviewJob>(
   GITHUB_REVIEW_QUEUE_NAME,
@@ -46,6 +51,16 @@ const worker = new Worker<GitHubRepositoryReviewJob>(
       },
     });
 
+    const preparedRepository = await prepareGitHubRepositoryForAnalysis(
+      job.data.reviewId,
+      workspacePath,
+    );
+    const loadedRepository = await loadPreparedRepositoryFiles(preparedRepository);
+    const chunkedRepository = chunkLoadedRepositoryFiles(
+      loadedRepository,
+      job.data.repositoryId,
+    );
+
     await prisma.githubReview.update({
       where: { id: job.data.reviewId },
       data: {
@@ -64,6 +79,10 @@ const worker = new Worker<GitHubRepositoryReviewJob>(
       commitSha,
       cleanupSummary,
       fileClassification,
+      preparedFileCount: preparedRepository.manifest.files.length,
+      loadedFileCount: loadedRepository.manifest.files.length,
+      chunkCount: chunkedRepository.manifest.chunks.length,
+      summarizedChunkCount: chunkedRepository.manifest.chunks.filter((chunk) => Boolean(chunk.summary)).length,
     };
   },
   {
