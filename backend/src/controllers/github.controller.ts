@@ -94,3 +94,44 @@ export async function reviewRepository(
     next(error);
   }
 }
+
+export async function getReviewFindings(
+  req: Request<{ id: string }>,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    if (!req.user) throw new AppError("Authentication required", 401);
+
+    const review = await prisma.githubReview.findFirst({
+      where: { id: req.params.id, userId: req.user.id },
+      include: {
+        findings: { orderBy: [{ severity: "asc" }, { createdAt: "asc" }] },
+      },
+    });
+
+    if (!review) throw new AppError("GitHub review not found", 404);
+
+    res.json({
+      data: {
+        reviewId: review.id,
+        repositoryUrl: review.repositoryUrl,
+        repositoryName: `${review.owner}/${review.repository}`,
+        branch: "main",
+        status: review.status.toLowerCase(),
+        evaluatedAt: review.updatedAt,
+        findings: review.findings.map((finding) => ({
+          id: finding.id,
+          category: finding.category,
+          severity: finding.severity,
+          title: finding.title,
+          summary: finding.summary,
+          location: `${finding.filePath}${finding.lineStart ? `:${finding.lineStart}` : ""}`,
+          recommendation: finding.recommendation,
+        })),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}

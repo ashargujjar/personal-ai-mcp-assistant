@@ -221,6 +221,7 @@ model GitHubReview {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   manifest RepositoryManifest?
+  findings GitHubFinding[]
 
   @@index([userId, createdAt])
   @@index([status, createdAt])
@@ -249,6 +250,27 @@ model RepositoryManifest {
 
   @@index([repositoryId, commitSha])
   @@map("repository_manifests")
+}
+
+model GitHubFinding {
+  id                String   @id @default(cuid())
+  reviewId          String   @map("review_id")
+  category          String
+  severity          String
+  title             String
+  summary           String   @db.Text
+  filePath          String   @map("file_path")
+  lineStart         Int?     @map("line_start")
+  lineEnd           Int?     @map("line_end")
+  recommendation    String   @db.Text
+  evidenceChunkIds  Json     @map("evidence_chunk_ids")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  review GitHubReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  @@index([reviewId, category])
+  @@index([reviewId, severity])
+  @@map("github_findings")
 }
 
 model Memory {

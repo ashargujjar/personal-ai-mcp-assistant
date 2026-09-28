@@ -71,10 +71,35 @@ const worker = new Worker<GitHubRepositoryReviewJob>(
       chunks: chunkedRepository.manifest.chunks,
     });
 
+    await prisma.githubFinding.createMany({
+      data: (analyzerResult.findings ?? []).map((finding: {
+        category: string;
+        severity: string;
+        title: string;
+        summary: string;
+        filePath: string;
+        lineStart?: number | null;
+        lineEnd?: number | null;
+        recommendation: string;
+        evidenceChunkIds?: string[];
+      }) => ({
+        reviewId: job.data.reviewId,
+        category: finding.category,
+        severity: finding.severity,
+        title: finding.title,
+        summary: finding.summary,
+        filePath: finding.filePath,
+        lineStart: finding.lineStart ?? null,
+        lineEnd: finding.lineEnd ?? null,
+        recommendation: finding.recommendation,
+        evidenceChunkIds: finding.evidenceChunkIds ?? [],
+      })),
+    });
+
     await prisma.githubReview.update({
       where: { id: job.data.reviewId },
       data: {
-        status: "PROCESSING",
+        status: "COMPLETED",
       },
     });
 

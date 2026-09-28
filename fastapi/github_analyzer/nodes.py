@@ -189,33 +189,120 @@ def dependencies_agent(llm):
     )
 
 
+def _finding_words(value: str) -> set[str]:
+    return {
+        word
+        for word in value.lower().replace("-", " ").replace("_", " ").split()
+        if len(word) > 2
+    }
+
+
+def _same_finding(left: AnalyzerFinding, right: AnalyzerFinding) -> bool:
+    if left["category"] != right["category"]:
+        return False
+    if left["filePath"] != right["filePath"]:
+        return False
+
+    left_title = _finding_words(left["title"])
+    right_title = _finding_words(right["title"])
+    title_overlap = len(left_title & right_title) / max(len(left_title | right_title), 1)
+
+    left_start = left.get("lineStart")
+    left_end = left.get("lineEnd")
+    right_start = right.get("lineStart")
+    right_end = right.get("lineEnd")
+    line_overlap = (
+        left_start is None
+        or left_end is None
+        or right_start is None
+        or right_end is None
+        or max(left_start, right_start) <= min(left_end, right_end)
+    )
+
+    return (
+        left["title"].strip().lower() == right["title"].strip().lower()
+        or (line_overlap and title_overlap >= 0.35)
+    )
+
+
+def _merge_findings(
+    existing: AnalyzerFinding,
+    duplicate: AnalyzerFinding,
+) -> AnalyzerFinding:
+    severity_order = {"low": 0, "medium": 1, "high": 2, "critical": 3}
+    severity = max(
+        (existing["severity"], duplicate["severity"]),
+        key=lambda value: severity_order.get(value, -1),
+    )
+
+    evidence_ids = sorted(
+        set(existing.get("evidenceChunkIds", []))
+        | set(duplicate.get("evidenceChunkIds", []))
+    )
+
+    summary = existing["summary"].strip()
+    duplicate_summary = duplicate["summary"].strip()
+    if duplicate_summary and duplicate_summary.lower() not in summary.lower():
+        summary = f"{summary} {duplicate_summary}"
+
+    recommendation = existing["recommendation"].strip()
+    duplicate_recommendation = duplicate["recommendation"].strip()
+    if (
+        duplicate_recommendation
+        and duplicate_recommendation.lower() not in recommendation.lower()
+    ):
+        recommendation = f"{recommendation} {duplicate_recommendation}"
+
+    return {
+        **existing,
+        "severity": severity,
+        "summary": summary,
+        "recommendation": recommendation,
+        "evidenceChunkIds": evidence_ids,
+        "lineStart": min(
+            value
+            for value in (existing.get("lineStart"), duplicate.get("lineStart"))
+            if value is not None
+        )
+        if existing.get("lineStart") is not None or duplicate.get("lineStart") is not None
+        else None,
+        "lineEnd": max(
+            value
+            for value in (existing.get("lineEnd"), duplicate.get("lineEnd"))
+            if value is not None
+        )
+        if existing.get("lineEnd") is not None or duplicate.get("lineEnd") is not None
+        else None,
+    }
+
+
 def aggregate_findings(state: AnalyzerState) -> dict:
     final_findings: list[AnalyzerFinding] = []
-    seen: set[tuple[str, str, int | None, int | None, str]] = set()
 
     for category_findings in state.get("findings", {}).values():
         for finding in category_findings:
-            evidence_key = ",".join(sorted(finding.get("evidenceChunkIds", [])))
-            dedupe_key = (
-                finding["category"],
-                finding["filePath"],
-                finding.get("lineStart"),
-                finding.get("lineEnd"),
-                evidence_key or finding["title"].strip().lower(),
+            normalized = {
+                **finding,
+                "title": finding["title"].strip(),
+                "summary": finding["summary"].strip(),
+                "recommendation": finding["recommendation"].strip(),
+                "evidenceChunkIds": sorted(set(finding.get("evidenceChunkIds", []))),
+            }
+            duplicate_index = next(
+                (
+                    index
+                    for index, existing in enumerate(final_findings)
+                    if _same_finding(existing, normalized)
+                ),
+                None,
             )
-            if dedupe_key in seen:
-                continue
-
-            seen.add(dedupe_key)
-            final_findings.append(
-                {
-                    **finding,
-                    "title": finding["title"].strip(),
-                    "summary": finding["summary"].strip(),
-                    "recommendation": finding["recommendation"].strip(),
-                    "evidenceChunkIds": sorted(set(finding.get("evidenceChunkIds", []))),
-                }
-            )
+            if duplicate_index is None:
+                final_findings.append(normalized)
+            else:
+                final_findings[duplicate_index] = _merge_findings(
+                    final_findings[duplicate_index],
+                    normalized,
+                )
 
     severity_order = {
         "critical": 0,
