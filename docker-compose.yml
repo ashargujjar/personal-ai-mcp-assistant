@@ -27,6 +27,7 @@ services:
       GITHUB_ANALYZER_URL: http://python:8000
       CHOKIDAR_USEPOLLING: "true"
       CHOKIDAR_INTERVAL: "1000"
+    command: sh -c "npx prisma generate && npm run dev"
     ports:
       - "4000:4000"
     depends_on:
@@ -228,7 +229,7 @@ services:
       context: ./backend
       dockerfile: dockerfile
     restart: unless-stopped
-    command: npm run worker:github-review
+    command: sh -c "npx prisma generate && npm run worker:github-review"
     env_file:
       - .env
     environment:
