@@ -12,15 +12,15 @@ from .nodes import (
 from .state import AnalyzerState
 
 
-def build_github_analyzer_graph():
+def build_github_analyzer_graph(llm):
     builder = StateGraph(AnalyzerState)
 
     builder.add_node("router", route_chunks)
-    builder.add_node("security", security_agent)
-    builder.add_node("bugs", bugs_agent)
-    builder.add_node("quality", quality_agent)
-    builder.add_node("testing", testing_agent)
-    builder.add_node("dependencies", dependencies_agent)
+    builder.add_node("security", security_agent(llm))
+    builder.add_node("bugs", bugs_agent(llm))
+    builder.add_node("quality", quality_agent(llm))
+    builder.add_node("testing", testing_agent(llm))
+    builder.add_node("dependencies", dependencies_agent(llm))
     builder.add_node("aggregator", aggregate_findings)
 
     builder.add_edge(START, "router")
