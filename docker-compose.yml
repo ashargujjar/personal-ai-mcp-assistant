@@ -24,6 +24,7 @@ services:
     environment:
       DATABASE_URL: postgresql://nexus:nexus@postgres:5432/nexus_ai
       REDIS_URL: redis://redis:6379
+      GITHUB_ANALYZER_URL: http://python:8000
       CHOKIDAR_USEPOLLING: "true"
       CHOKIDAR_INTERVAL: "1000"
     ports:
@@ -46,6 +47,7 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql://nexus:nexus@postgres:5432/nexus_ai
+      GITHUB_ANALYZER_URL: http://python:8000
     ports:
       - "8000:8000"
     depends_on:

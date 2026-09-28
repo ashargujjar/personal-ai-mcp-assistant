@@ -17,9 +17,11 @@ from chat import build_graph
 from mcp_client import get_mcp_tools
 from middleware.auth import verify_jwt
 from middleware.auth import JWT_ALGORITHM, JWT_SECRET
+from github_analyzer.api import github_analyzer_router
 
 app = FastAPI()
 logger = logging.getLogger(__name__)
+app.include_router(github_analyzer_router)
 
 
 class ChatRequest(BaseModel):

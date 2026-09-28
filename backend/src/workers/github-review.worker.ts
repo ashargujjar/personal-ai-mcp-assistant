@@ -18,6 +18,7 @@ import {
   loadPreparedRepositoryFiles,
   prepareGitHubRepositoryForAnalysis,
 } from "../services/github-analyzer-preparation.service";
+import { sendGitHubRepositoryToAnalyzer } from "../services/github-analyzer.service";
 
 const worker = new Worker<GitHubRepositoryReviewJob>(
   GITHUB_REVIEW_QUEUE_NAME,
@@ -60,6 +61,15 @@ const worker = new Worker<GitHubRepositoryReviewJob>(
       loadedRepository,
       job.data.repositoryId,
     );
+    const analyzerResult = await sendGitHubRepositoryToAnalyzer({
+      reviewId: job.data.reviewId,
+      repositoryId: job.data.repositoryId,
+      repositoryUrl: job.data.repositoryUrl,
+      owner: job.data.owner,
+      repository: job.data.repository,
+      commitSha,
+      chunks: chunkedRepository.manifest.chunks,
+    });
 
     await prisma.githubReview.update({
       where: { id: job.data.reviewId },
@@ -83,6 +93,7 @@ const worker = new Worker<GitHubRepositoryReviewJob>(
       loadedFileCount: loadedRepository.manifest.files.length,
       chunkCount: chunkedRepository.manifest.chunks.length,
       summarizedChunkCount: chunkedRepository.manifest.chunks.filter((chunk) => Boolean(chunk.summary)).length,
+      analyzerResult,
     };
   },
   {
