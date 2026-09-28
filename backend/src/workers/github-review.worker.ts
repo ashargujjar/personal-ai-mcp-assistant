@@ -71,7 +71,7 @@ const worker = new Worker<GitHubRepositoryReviewJob>(
       chunks: chunkedRepository.manifest.chunks,
     });
 
-    await prisma.githubFinding.createMany({
+    await prisma.gitHubFinding.createMany({
       data: (analyzerResult.findings ?? []).map((finding: {
         category: string;
         severity: string;
@@ -96,7 +96,7 @@ const worker = new Worker<GitHubRepositoryReviewJob>(
       })),
     });
 
-    await prisma.githubReview.update({
+    await prisma.gitHubReview.update({
       where: { id: job.data.reviewId },
       data: {
         status: "COMPLETED",

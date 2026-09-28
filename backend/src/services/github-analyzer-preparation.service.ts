@@ -135,7 +135,7 @@ export async function prepareGitHubRepositoryForAnalysis(
   reviewId: string,
   workspacePath: string,
 ): Promise<PreparedGitHubRepository> {
-  const review = await prisma.githubReview.findUnique({
+  const review = await prisma.gitHubReview.findUnique({
     where: { id: reviewId },
     include: { manifest: true },
   });

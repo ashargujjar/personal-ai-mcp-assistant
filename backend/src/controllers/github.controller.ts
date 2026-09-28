@@ -66,7 +66,7 @@ export async function reviewRepository(
       throw new AppError("Private repositories are not supported. Please provide a public GitHub repository.", 403);
     }
 
-    const review = await prisma.githubReview.create({
+    const review = await prisma.gitHubReview.create({
       data: {
         userId: req.user.id,
         repositoryId: repositoryData.id,
@@ -103,7 +103,7 @@ export async function getReviewFindings(
   try {
     if (!req.user) throw new AppError("Authentication required", 401);
 
-    const review = await prisma.githubReview.findFirst({
+    const review = await prisma.gitHubReview.findFirst({
       where: { id: req.params.id, userId: req.user.id },
       include: {
         findings: { orderBy: [{ severity: "asc" }, { createdAt: "asc" }] },
