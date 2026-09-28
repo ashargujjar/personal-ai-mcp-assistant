@@ -1,5 +1,11 @@
 import { issues, pullRequests, repositories } from "@/mock/github";
-import type { GitHubReviewResult, Issue, PullRequest, Repository } from "@/types";
+import type {
+  GitHubReviewHistoryItem,
+  GitHubReviewResult,
+  Issue,
+  PullRequest,
+  Repository,
+} from "@/types";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000/api";
 
@@ -50,7 +56,12 @@ export const githubService = {
       repositoryUrl: review.repositoryUrl,
       repositoryName: review.repositoryName,
       branch: review.branch,
-      status: review.status === "completed" ? "complete" : "reviewing",
+      status:
+        review.status === "completed"
+          ? "complete"
+          : review.status === "failed"
+            ? "failed"
+            : "reviewing",
       evaluatedAt: review.evaluatedAt,
       overallScore: 0,
       riskLevel: "Low",
@@ -60,5 +71,25 @@ export const githubService = {
       agentChecks: [],
       nextActions: [],
     };
+  },
+
+  async listReviews(token: string | null): Promise<GitHubReviewHistoryItem[]> {
+    const response = await fetch(`${API_URL}/github/reviews`, {
+      headers: authHeaders(token),
+    });
+    const json = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(json?.message ?? "Could not load GitHub review history");
+    return json.data as GitHubReviewHistoryItem[];
+  },
+
+  async deleteReview(reviewId: string, token: string | null): Promise<void> {
+    const response = await fetch(`${API_URL}/github/reviews/${encodeURIComponent(reviewId)}`, {
+      method: "DELETE",
+      headers: authHeaders(token),
+    });
+    if (!response.ok) {
+      const json = await response.json().catch(() => ({}));
+      throw new Error(json?.message ?? "Could not delete GitHub review");
+    }
   },
 };

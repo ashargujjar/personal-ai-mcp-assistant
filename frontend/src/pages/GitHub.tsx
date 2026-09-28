@@ -1,25 +1,51 @@
-import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useState, type FormEvent } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 import {
-  AlertTriangle, ArrowRight, Check, ChevronDown, CircleDot, ExternalLink,
-  FileSearch, Github, LockKeyhole, Play, RefreshCw, ShieldCheck, TestTube2,
+  AlertTriangle,
+  ArrowRight,
+  Check,
+  ChevronDown,
+  CircleDot,
+  ExternalLink,
+  FileSearch,
+  Github,
+  History,
+  LockKeyhole,
+  Play,
+  RefreshCw,
+  ShieldCheck,
+  TestTube2,
+  Trash2,
 } from "lucide-react";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { useAuth } from "@/hooks/useAuth";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { formatRelativeTime } from "@/lib/utils";
 import { githubService } from "@/services/githubService";
 import type { GitHubReviewFinding, GitHubReviewSeverity } from "@/types";
 
-const severityStyles: Record<GitHubReviewSeverity, { label: string; variant: "destructive" | "warning" | "default" | "muted" }> = {
+const severityStyles: Record<
+  GitHubReviewSeverity,
+  { label: string; variant: "destructive" | "warning" | "default" | "muted" }
+> = {
   critical: { label: "Critical", variant: "destructive" },
   high: { label: "High", variant: "destructive" },
   medium: { label: "Medium", variant: "warning" },
   low: { label: "Low", variant: "muted" },
 };
 
-const categoryIcons = { Security: ShieldCheck, Bugs: AlertTriangle, Quality: FileSearch, Testing: TestTube2, Dependencies: CircleDot };
+const categoryIcons = {
+  Security: ShieldCheck,
+  Bugs: AlertTriangle,
+  Quality: FileSearch,
+  Testing: TestTube2,
+  Dependencies: CircleDot,
+};
+
 const findingCategories = ["Security", "Bugs", "Quality", "Testing", "Dependencies"] as const;
 
 export default function GitHub() {
@@ -28,46 +54,108 @@ export default function GitHub() {
   const scope = "security";
   const [issuePrompt, setIssuePrompt] = useState("");
   const [issueDraft, setIssueDraft] = useState<string | null>(null);
+  const [deleteReviewId, setDeleteReviewId] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
   const { token } = useAuth();
+  const queryClient = useQueryClient();
+  const selectedReviewId = searchParams.get("review");
+
+  const historyQuery = useQuery({
+    queryKey: ["github", "reviews", token],
+    queryFn: () => githubService.listReviews(token),
+    enabled: Boolean(token),
+    refetchInterval: (query) =>
+      query.state.data?.some((item) => item.status === "queued" || item.status === "processing")
+        ? 4000
+        : false,
+  });
+
+  const activeReviewId = selectedReviewId ?? historyQuery.data?.[0]?.reviewId;
+  const reviewQuery = useQuery({
+    queryKey: ["github", "review", activeReviewId, token],
+    queryFn: () => githubService.getReviewFindings(activeReviewId!, token),
+    enabled: Boolean(activeReviewId && token),
+    refetchInterval: (query) => query.state.data?.status === "reviewing" ? 4000 : false,
+  });
+
   const reviewMutation = useMutation({
     mutationFn: (url: string) => githubService.evaluateRepository({ repositoryUrl: url, token }),
+    onSuccess: (result) => {
+      if (result.reviewId) setSearchParams({ review: result.reviewId });
+      queryClient.invalidateQueries({ queryKey: ["github", "reviews", token] });
+    },
   });
-  const review = reviewMutation.data;
 
-  function runReview(event: React.FormEvent) {
+  const deleteMutation = useMutation({
+    mutationFn: (reviewId: string) => githubService.deleteReview(reviewId, token),
+    onSuccess: (_result, reviewId) => {
+      if (reviewId === activeReviewId) {
+        setSearchParams({});
+        setIssueDraft(null);
+      }
+      queryClient.removeQueries({ queryKey: ["github", "review", reviewId, token] });
+      queryClient.invalidateQueries({ queryKey: ["github", "reviews", token] });
+    },
+  });
+
+  const review = reviewQuery.data;
+  const findingsByCategory =
+    review?.findings.reduce<Record<string, GitHubReviewFinding[]>>((groups, finding) => {
+      (groups[finding.category] ??= []).push(finding);
+      return groups;
+    }, {}) ?? {};
+
+  function runReview(event: FormEvent) {
     event.preventDefault();
     reviewMutation.mutate(repositoryUrl);
   }
 
-  function prepareIssue(event: React.FormEvent) {
+  function prepareIssue(event: FormEvent) {
     event.preventDefault();
     if (!issuePrompt.trim()) return;
     setIssueDraft(issuePrompt.trim());
   }
 
-  const findingsByCategory = review?.findings.reduce<Record<string, GitHubReviewFinding[]>>((groups, finding) => {
-    (groups[finding.category] ??= []).push(finding);
-    return groups;
-  }, {}) ?? {};
+  function selectReview(reviewId: string, url: string) {
+    setSearchParams({ review: reviewId });
+    setRepositoryUrl(url);
+    setIssueDraft(null);
+  }
+
+  const reviewToDelete = historyQuery.data?.find((item) => item.reviewId === deleteReviewId);
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 p-4 sm:p-6">
       <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
         <div>
-          <div className="mb-2 flex items-center gap-2 text-sm text-muted-foreground"><Github className="h-4 w-4" /> Engineering intelligence</div>
+          <div className="mb-2 flex items-center gap-2 text-sm text-muted-foreground">
+            <Github className="h-4 w-4" /> Engineering intelligence
+          </div>
           <h1 className="text-2xl font-semibold tracking-tight">GitHub repository review</h1>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Submit a public GitHub repository. Findings will be generated by the backend review worker.</p>
+          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+            Submit a public GitHub repository. Findings will be generated by the backend review worker.
+          </p>
         </div>
-        <Badge variant="success" className="w-fit"><CircleDot className="h-3 w-3" /> Agent ready</Badge>
+        <Badge variant="success" className="w-fit">
+          <CircleDot className="h-3 w-3" /> Agent ready
+        </Badge>
       </div>
 
       <Card className="border-primary/20 bg-primary/[0.03] p-5">
         <form onSubmit={runReview} className="space-y-4">
-          <div className="flex items-center gap-2 text-sm font-medium"><Github className="h-4 w-4" /> Repository to evaluate</div>
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <Github className="h-4 w-4" /> Repository to evaluate
+          </div>
           <div className="flex flex-col gap-3 lg:flex-row">
             <div className="relative flex-1">
               <ExternalLink className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input value={repositoryUrl} onChange={(event) => setRepositoryUrl(event.target.value)} placeholder="https://github.com/owner/repository" className="pl-9" aria-label="GitHub repository URL" />
+              <Input
+                value={repositoryUrl}
+                onChange={(event) => setRepositoryUrl(event.target.value)}
+                placeholder="https://github.com/owner/repository"
+                className="pl-9"
+                aria-label="GitHub repository URL"
+              />
             </div>
             <Button type="submit" disabled={reviewMutation.isPending || !repositoryUrl.trim()} className="lg:min-w-36">
               {reviewMutation.isPending ? <RefreshCw className="animate-spin" /> : <Play />}
@@ -75,93 +163,232 @@ export default function GitHub() {
             </Button>
           </div>
           <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-            <label className="flex items-center gap-2"><span>Branch</span><span className="relative">
-              <select value={branch} onChange={(event) => setBranch(event.target.value)} className="h-8 appearance-none rounded-md border border-input bg-background px-3 pr-8 text-foreground"><option>main</option><option>develop</option><option>master</option></select>
-              <ChevronDown className="pointer-events-none absolute right-2 top-2 h-3.5 w-3.5" />
-            </span></label>
-            <span className="flex items-center gap-2"><span>Scope</span><Badge variant="outline">Security only</Badge></span>
-            <span className="flex items-center gap-1.5 py-1.5"><LockKeyhole className="h-3.5 w-3.5" /> Public repositories only</span>
+            <label className="flex items-center gap-2">
+              <span>Branch</span>
+              <span className="relative">
+                <select
+                  value={branch}
+                  onChange={(event) => setBranch(event.target.value)}
+                  className="h-8 appearance-none rounded-md border border-input bg-background px-3 pr-8 text-foreground"
+                >
+                  <option>main</option>
+                  <option>develop</option>
+                  <option>master</option>
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2 top-2 h-3.5 w-3.5" />
+              </span>
+            </label>
+            <span className="flex items-center gap-2">
+              <span>Scope</span>
+              <Badge variant="outline">Security only</Badge>
+            </span>
+            <span className="flex items-center gap-1.5 py-1.5">
+              <LockKeyhole className="h-3.5 w-3.5" /> Public repositories only
+            </span>
           </div>
         </form>
       </Card>
 
-      {reviewMutation.isError && <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{reviewMutation.error instanceof Error ? reviewMutation.error.message : "Could not verify this GitHub repository."}</div>}
+      {reviewMutation.isError && (
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+          {reviewMutation.error instanceof Error ? reviewMutation.error.message : "Could not verify this GitHub repository."}
+        </div>
+      )}
 
-      {review && (
-        <>
-          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+      <div className="grid items-start gap-6 xl:grid-cols-[19rem_minmax(0,1fr)]">
+        <Card className="p-4 xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto">
+          <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="flex flex-wrap items-center gap-2"><h2 className="text-lg font-semibold">{review.repositoryName}</h2><Badge variant="outline">{branch}</Badge><Badge variant="success"><Check className="h-3 w-3" /> Repository verified</Badge></div>
-              <p className="mt-1 text-xs text-muted-foreground">Findings are waiting for backend worker results · {scope === "full" ? "Full repository" : `${scope} scope`}</p>
-            </div>
-            <Button variant="outline" size="sm" onClick={() => reviewMutation.mutate(repositoryUrl)}><RefreshCw /> Check again</Button>
-          </div>
-
-          <Card className="p-5">
-            <div className="flex items-center justify-between gap-3"><div><h2 className="font-semibold">Findings</h2><p className="mt-1 text-xs text-muted-foreground">Security, bugs, quality, testing, and dependency findings will appear here.</p></div><Badge variant="outline">{review.findings.length} findings</Badge></div>
-            <div className="mt-5 grid gap-3 md:grid-cols-2">
-              {findingCategories.map((category) => {
-                const Icon = categoryIcons[category];
-                const findings = findingsByCategory[category] ?? [];
-                return (
-                  <section key={category} className="rounded-md border border-border p-4">
-                    <div className="flex items-center gap-2 text-sm font-medium"><Icon className="h-4 w-4 text-muted-foreground" /> {category}</div>
-                    {findings.length === 0 ? <p className="mt-3 text-xs text-muted-foreground">No findings yet.</p> : (
-                      <div className="mt-3 space-y-2">{findings.map((finding) => (
-                        <div key={finding.id} className="rounded-md border border-border p-3">
-                          <div className="flex items-start justify-between gap-2"><div><p className="text-sm font-medium">{finding.title}</p><p className="mt-1 text-xs text-muted-foreground">{finding.location}</p></div><Badge variant={severityStyles[finding.severity].variant}>{severityStyles[finding.severity].label}</Badge></div>
-                          <p className="mt-3 text-sm leading-6 text-muted-foreground">{finding.summary}</p>
-                          <div className="mt-3 flex gap-2 border-t border-border pt-3 text-xs"><ArrowRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" /><span><span className="font-medium text-foreground">Recommendation:</span> {finding.recommendation}</span></div>
-                        </div>
-                      ))}</div>
-                    )}
-                  </section>
-                );
-              })}
-            </div>
-          </Card>
-
-          <Card className="p-5">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 className="font-semibold">Open a GitHub issue</h2>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Describe the problem and the backend agent will create the issue later.
-                </p>
+              <div className="flex items-center gap-2">
+                <History className="h-4 w-4 text-muted-foreground" />
+                <h2 className="font-semibold">Scan history</h2>
               </div>
-              <Badge variant="outline">Frontend preview</Badge>
+              <p className="mt-1 text-xs text-muted-foreground">Reopen or remove a previous scan.</p>
             </div>
-            <form onSubmit={prepareIssue} className="mt-4 space-y-3">
-              <textarea
-                value={issuePrompt}
-                onChange={(event) => setIssuePrompt(event.target.value)}
-                placeholder="Example: Open a high-priority issue for the missing authorization check in the repository..."
-                className="min-h-28 w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                aria-label="Describe the GitHub issue to open"
-              />
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => historyQuery.refetch()}
+              disabled={historyQuery.isFetching}
+              title="Refresh scan history"
+              aria-label="Refresh scan history"
+            >
+              <RefreshCw className={historyQuery.isFetching ? "animate-spin" : ""} />
+            </Button>
+          </div>
+          <div className="mt-4 space-y-2">
+            {historyQuery.isLoading ? (
+              <p className="text-sm text-muted-foreground">Loading scan history...</p>
+            ) : historyQuery.data?.length ? (
+              historyQuery.data.map((item) => (
+                <div
+                  key={item.reviewId}
+                  className={`flex items-center gap-1 rounded-md border p-2 transition-colors ${
+                    item.reviewId === activeReviewId ? "border-primary/60 bg-accent/40" : "border-border"
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => selectReview(item.reviewId, item.repositoryUrl)}
+                    className="min-w-0 flex-1 rounded-sm p-1 text-left hover:bg-accent/50"
+                  >
+                    <p className="truncate text-sm font-medium">{item.repositoryName}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {formatRelativeTime(item.createdAt)} · {item.findingsCount} findings
+                    </p>
+                    <Badge
+                      variant={item.status === "completed" ? "success" : item.status === "failed" ? "destructive" : "warning"}
+                      className="mt-2"
+                    >
+                      {item.status}
+                    </Badge>
+                  </button>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    onClick={() => setDeleteReviewId(item.reviewId)}
+                    title={`Delete ${item.repositoryName} scan`}
+                    aria-label={`Delete ${item.repositoryName} scan`}
+                    className="shrink-0 text-muted-foreground hover:text-destructive"
+                  >
+                    <Trash2 />
+                  </Button>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">No repository reviews yet.</p>
+            )}
+          </div>
+        </Card>
+
+        <div className="min-w-0 space-y-6">
+          {reviewQuery.isError && (
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {reviewQuery.error instanceof Error ? reviewQuery.error.message : "Could not load this repository review."}
+            </div>
+          )}
+
+          {review ? (
+            <>
               <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-                <p className="text-xs text-muted-foreground">
-                  The prompt will later be sent to the issue-creation agent.
-                </p>
-                <Button type="submit" disabled={!issuePrompt.trim()}>
-                  <ArrowRight /> Prepare issue
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-lg font-semibold">{review.repositoryName}</h2>
+                    <Badge variant="outline">{branch}</Badge>
+                    <Badge variant={review.status === "complete" ? "success" : review.status === "failed" ? "destructive" : "warning"}>
+                      {review.status === "complete" ? <><Check className="h-3 w-3" /> Complete</> : review.status === "failed" ? "Failed" : "Processing"}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Review loaded from backend history · Security only
+                  </p>
+                </div>
+                <Button variant="outline" size="sm" onClick={() => reviewQuery.refetch()} disabled={reviewQuery.isFetching}>
+                  <RefreshCw className={reviewQuery.isFetching ? "animate-spin" : ""} /> Refresh result
                 </Button>
               </div>
-            </form>
-            {issueDraft && (
-              <div className="mt-4 rounded-md border border-primary/20 bg-primary/[0.04] p-4">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <Check className="h-4 w-4 text-success" /> Issue request prepared
+
+              <Card className="p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="font-semibold">Findings</h2>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Security, bugs, quality, testing, and dependency findings.
+                    </p>
+                  </div>
+                  <Badge variant="outline">{review.findings.length} findings</Badge>
                 </div>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">{issueDraft}</p>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Backend issue creation is not connected yet.
-                </p>
+                <div className="mt-5 grid gap-3 md:grid-cols-2">
+                  {findingCategories.map((category) => {
+                    const Icon = categoryIcons[category];
+                    const findings = findingsByCategory[category] ?? [];
+                    return (
+                      <section key={category} className="rounded-md border border-border p-4">
+                        <div className="flex items-center gap-2 text-sm font-medium">
+                          <Icon className="h-4 w-4 text-muted-foreground" /> {category}
+                        </div>
+                        {findings.length === 0 ? (
+                          <p className="mt-3 text-xs text-muted-foreground">No findings yet.</p>
+                        ) : (
+                          <div className="mt-3 space-y-2">
+                            {findings.map((finding) => (
+                              <div key={finding.id} className="rounded-md border border-border p-3">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div>
+                                    <p className="text-sm font-medium">{finding.title}</p>
+                                    <p className="mt-1 text-xs text-muted-foreground">{finding.location}</p>
+                                  </div>
+                                  <Badge variant={severityStyles[finding.severity].variant}>
+                                    {severityStyles[finding.severity].label}
+                                  </Badge>
+                                </div>
+                                <p className="mt-3 text-sm leading-6 text-muted-foreground">{finding.summary}</p>
+                                <div className="mt-3 flex gap-2 border-t border-border pt-3 text-xs">
+                                  <ArrowRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+                                  <span><span className="font-medium text-foreground">Recommendation:</span> {finding.recommendation}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </section>
+                    );
+                  })}
+                </div>
+              </Card>
+
+              <Card className="p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h2 className="font-semibold">Open a GitHub issue</h2>
+                    <p className="mt-1 text-xs text-muted-foreground">Describe the problem for the future issue-creation agent.</p>
+                  </div>
+                  <Badge variant="outline">Frontend preview</Badge>
+                </div>
+                <form onSubmit={prepareIssue} className="mt-4 space-y-3">
+                  <textarea
+                    value={issuePrompt}
+                    onChange={(event) => setIssuePrompt(event.target.value)}
+                    placeholder="Describe the issue to open..."
+                    className="min-h-24 w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    aria-label="Describe the GitHub issue to open"
+                  />
+                  <div className="flex justify-end">
+                    <Button type="submit" disabled={!issuePrompt.trim()}><ArrowRight /> Prepare issue</Button>
+                  </div>
+                </form>
+                {issueDraft && (
+                  <div className="mt-4 rounded-md border border-primary/20 bg-primary/[0.04] p-4">
+                    <div className="flex items-center gap-2 text-sm font-medium"><Check className="h-4 w-4 text-success" /> Issue request prepared</div>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">{issueDraft}</p>
+                    <p className="mt-2 text-xs text-muted-foreground">Backend issue creation is not connected yet.</p>
+                  </div>
+                )}
+              </Card>
+            </>
+          ) : (
+            <Card className="flex min-h-64 items-center justify-center p-8 text-center">
+              <div>
+                <History className="mx-auto h-8 w-8 text-muted-foreground" />
+                <h2 className="mt-3 font-semibold">Select a scan to view findings</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Your scan results are saved in the history panel.</p>
               </div>
-            )}
-          </Card>
-        </>
-      )}
+            </Card>
+          )}
+        </div>
+      </div>
+
+      <ConfirmDialog
+        open={Boolean(deleteReviewId)}
+        onOpenChange={(open) => !open && setDeleteReviewId(null)}
+        title="Delete repository scan?"
+        description={`This will permanently remove ${reviewToDelete?.repositoryName ?? "this scan"} and its findings.`}
+        confirmLabel={deleteMutation.isPending ? "Deleting..." : "Delete scan"}
+        destructive
+        onConfirm={() => {
+          if (deleteReviewId) deleteMutation.mutate(deleteReviewId);
+        }}
+      />
     </div>
   );
 }

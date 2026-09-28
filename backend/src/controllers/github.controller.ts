@@ -6,6 +6,7 @@ import {
   PROCESS_GITHUB_REVIEW_JOB,
 } from "../queues/github.queue";
 import { prisma } from "../db/connect";
+import { removeGitHubWorkspace } from "../services/github-workspace.service";
 
 interface GitHubRepositoryResponse {
   id: number;
@@ -131,6 +132,73 @@ export async function getReviewFindings(
         })),
       },
     });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function listReviews(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    if (!req.user) throw new AppError("Authentication required", 401);
+
+    const reviews = await prisma.gitHubReview.findMany({
+      where: { userId: req.user.id },
+      orderBy: { createdAt: "desc" },
+      include: {
+        _count: {
+          select: { findings: true },
+        },
+      },
+    });
+
+    res.json({
+      data: reviews.map((review) => ({
+        reviewId: review.id,
+        repositoryUrl: review.repositoryUrl,
+        repositoryName: `${review.owner}/${review.repository}`,
+        status: review.status.toLowerCase(),
+        createdAt: review.createdAt,
+        updatedAt: review.updatedAt,
+        findingsCount: review._count.findings,
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function deleteReview(
+  req: Request<{ id: string }>,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    if (!req.user) throw new AppError("Authentication required", 401);
+
+    const review = await prisma.gitHubReview.findFirst({
+      where: { id: req.params.id, userId: req.user.id },
+      select: { id: true },
+    });
+
+    if (!review) throw new AppError("GitHub review not found", 404);
+
+    const job = await githubReviewQueue.getJob(review.id);
+    if (job) {
+      await job.remove().catch(() => {
+        // Active jobs may not be removable; database and workspace cleanup still proceed.
+      });
+    }
+
+    await prisma.gitHubReview.delete({
+      where: { id: review.id },
+    });
+    await removeGitHubWorkspace(review.id);
+
+    res.status(204).send();
   } catch (error) {
     next(error);
   }

@@ -133,6 +133,17 @@ worker.on("completed", (job) => {
 
 worker.on("failed", (job, error) => {
   console.error(`[github-review-worker] failed job ${job?.id}`, error);
+  if (!job) return;
+
+  void prisma.gitHubReview.update({
+    where: { id: job.data.reviewId },
+    data: { status: "FAILED" },
+  }).catch((updateError) => {
+    console.error(
+      `[github-review-worker] failed to mark review=${job.data.reviewId} as failed`,
+      updateError,
+    );
+  });
 });
 
 async function shutdown() {

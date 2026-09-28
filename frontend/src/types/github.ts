@@ -63,7 +63,7 @@ export interface GitHubReviewResult {
   repositoryUrl: string;
   repositoryName: string;
   branch: string;
-  status: "ready" | "reviewing" | "complete";
+  status: "ready" | "reviewing" | "complete" | "failed";
   evaluatedAt: string;
   overallScore: number;
   riskLevel: "Low" | "Medium" | "High" | "Critical";
@@ -72,4 +72,14 @@ export interface GitHubReviewResult {
   findings: GitHubReviewFinding[];
   agentChecks: string[];
   nextActions: string[];
+}
+
+export interface GitHubReviewHistoryItem {
+  reviewId: string;
+  repositoryUrl: string;
+  repositoryName: string;
+  status: "queued" | "processing" | "completed" | "failed";
+  createdAt: string;
+  updatedAt: string;
+  findingsCount: number;
 }

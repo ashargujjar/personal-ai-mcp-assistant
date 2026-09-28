@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -17,4 +17,11 @@ export async function createGitHubWorkspace(reviewId: string): Promise<string> {
 
 export function getGitHubWorkspaceRoot(): string {
   return githubWorkspaceRoot;
+}
+
+export async function removeGitHubWorkspace(reviewId: string): Promise<void> {
+  await rm(path.join(githubWorkspaceRoot, reviewId), {
+    recursive: true,
+    force: true,
+  });
 }
