@@ -117,6 +117,8 @@ from the provided chunks.
                 HumanMessage(content=user_prompt),
             ]
         )
+        if response is None:
+            response = LLMFindingResponse()
 
         findings: list[AnalyzerFinding] = []
         for finding in response.findings:

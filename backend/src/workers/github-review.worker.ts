@@ -5,7 +5,10 @@ import {
   PROCESS_GITHUB_REVIEW_JOB,
 } from "../queues/github.queue";
 import type { GitHubRepositoryReviewJob } from "../queues/github.types";
-import { createGitHubWorkspace } from "../services/github-workspace.service";
+import {
+  createGitHubWorkspace,
+  removeGitHubWorkspace,
+} from "../services/github-workspace.service";
 import {
   cloneGitHubRepository,
   getClonedRepositoryCommitSha,
@@ -27,15 +30,32 @@ const worker = new Worker<GitHubRepositoryReviewJob>(
       throw new Error(`Unsupported GitHub job: ${job.name}`);
     }
 
+    await removeGitHubWorkspace(job.data.reviewId);
     const workspacePath = await createGitHubWorkspace(job.data.reviewId);
     await cloneGitHubRepository(job.data.repositoryUrl, workspacePath);
     const commitSha = await getClonedRepositoryCommitSha(workspacePath);
     const cleanupSummary = await cleanupRepositoryForScan(workspacePath);
     const fileClassification = await classifyRepositoryFiles(workspacePath);
 
-    await prisma.repositoryManifest.create({
-      data: {
+    await prisma.repositoryManifest.upsert({
+      where: { reviewId: job.data.reviewId },
+      create: {
         reviewId: job.data.reviewId,
+        repositoryId: job.data.repositoryId,
+        repositoryUrl: job.data.repositoryUrl,
+        owner: job.data.owner,
+        repository: job.data.repository,
+        commitSha,
+        fileCount: fileClassification.files.length,
+        sourceFileCount: fileClassification.counts.source,
+        configFileCount: fileClassification.counts.configuration,
+        documentationFileCount: fileClassification.counts.documentation,
+        testFileCount: fileClassification.counts.test,
+        manifestFileCount: fileClassification.counts["dependency-manifest"],
+        unknownFileCount: fileClassification.counts.unknown,
+        files: fileClassification.files,
+      },
+      update: {
         repositoryId: job.data.repositoryId,
         repositoryUrl: job.data.repositoryUrl,
         owner: job.data.owner,
@@ -69,6 +89,10 @@ const worker = new Worker<GitHubRepositoryReviewJob>(
       repository: job.data.repository,
       commitSha,
       chunks: chunkedRepository.manifest.chunks,
+    });
+
+    await prisma.gitHubFinding.deleteMany({
+      where: { reviewId: job.data.reviewId },
     });
 
     await prisma.gitHubFinding.createMany({
