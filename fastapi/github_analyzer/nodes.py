@@ -191,8 +191,45 @@ def dependencies_agent(llm):
 
 def aggregate_findings(state: AnalyzerState) -> dict:
     final_findings: list[AnalyzerFinding] = []
+    seen: set[tuple[str, str, int | None, int | None, str]] = set()
 
     for category_findings in state.get("findings", {}).values():
-        final_findings.extend(category_findings)
+        for finding in category_findings:
+            evidence_key = ",".join(sorted(finding.get("evidenceChunkIds", [])))
+            dedupe_key = (
+                finding["category"],
+                finding["filePath"],
+                finding.get("lineStart"),
+                finding.get("lineEnd"),
+                evidence_key or finding["title"].strip().lower(),
+            )
+            if dedupe_key in seen:
+                continue
+
+            seen.add(dedupe_key)
+            final_findings.append(
+                {
+                    **finding,
+                    "title": finding["title"].strip(),
+                    "summary": finding["summary"].strip(),
+                    "recommendation": finding["recommendation"].strip(),
+                    "evidenceChunkIds": sorted(set(finding.get("evidenceChunkIds", []))),
+                }
+            )
+
+    severity_order = {
+        "critical": 0,
+        "high": 1,
+        "medium": 2,
+        "low": 3,
+    }
+    final_findings.sort(
+        key=lambda finding: (
+            severity_order.get(finding["severity"], 99),
+            finding["category"],
+            finding["filePath"],
+            finding.get("lineStart") or 0,
+        )
+    )
 
     return {"finalFindings": final_findings}
