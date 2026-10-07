@@ -8,6 +8,7 @@ import githubRoutes from "./github.routes";
 import memoryRoutes from "./memory.routes";
 import resumeRoutes from "./resume.routes";
 import taskRoutes from "./task.routes";
+import logErrorRoutes from "./log-error.routes";
 
 const router = Router();
 
@@ -24,5 +25,6 @@ router.use("/calendar", calendarRoutes);
 router.use("/tasks", taskRoutes);
 router.use("/documents", documentRoutes);
 router.use("/resume-searches", resumeRoutes);
+router.use("/log-errors", logErrorRoutes);
 
 export default router;

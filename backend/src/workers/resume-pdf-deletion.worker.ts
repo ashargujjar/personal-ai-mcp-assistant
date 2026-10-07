@@ -6,6 +6,13 @@ import {
 } from "../queues/resume-pdf-deletion.queue";
 import type { ResumePdfDeletionJob } from "../queues/resume.types";
 import { deletePdf } from "../services/cloudinary";
+import {
+  installProcessErrorLogAnalyzer,
+  reportBackendError,
+  shutdownErrorLogAnalyzer,
+} from "../services/error-log-analyzer.service";
+
+installProcessErrorLogAnalyzer("resume-pdf-deletion-worker");
 
 const worker = new Worker<ResumePdfDeletionJob>(
   RESUME_PDF_DELETION_QUEUE_NAME,
@@ -32,10 +39,21 @@ const worker = new Worker<ResumePdfDeletionJob>(
 
 worker.on("failed", (job, error) => {
   console.error(`[resume-pdf-deletion-worker] failed job ${job?.id}`, error);
+  reportBackendError(error, {
+    source: "resume-pdf-deletion-worker:failed",
+    job: {
+      id: job?.id,
+      name: job?.name,
+      attemptsMade: job?.attemptsMade,
+      attempts: job?.opts.attempts,
+      queueName: RESUME_PDF_DELETION_QUEUE_NAME,
+    },
+  });
 });
 
 async function shutdown() {
   await worker.close();
+  await shutdownErrorLogAnalyzer();
   process.exit(0);
 }
 

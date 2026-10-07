@@ -20,6 +20,14 @@ import {
   PROCESS_RESUME_ATTACHMENT_JOB,
   resumeAttachmentQueue,
 } from "../queues/resume-attachment.queue";
+import {
+  installProcessErrorLogAnalyzer,
+  reportBackendError,
+  shutdownErrorLogAnalyzer,
+} from "../services/error-log-analyzer.service";
+
+installProcessErrorLogAnalyzer("resume-worker");
+
 function parseSender(value: string) {
   const match = value.match(/^(?:"?([^"<]*)"?\s*)?<([^>]+)>$/);
   if (match) {
@@ -198,6 +206,16 @@ worker.on("completed", (job) => {
 
 worker.on("failed", async (job, error) => {
   console.error(`[resume-worker] failed job ${job?.id}`, error);
+  reportBackendError(error, {
+    source: "resume-worker:failed",
+    job: {
+      id: job?.id,
+      name: job?.name,
+      attemptsMade: job?.attemptsMade,
+      attempts: job?.opts.attempts,
+      queueName: RESUME_QUEUE_NAME,
+    },
+  });
   if (!job) return;
   if (job.attemptsMade < (job.opts.attempts ?? 1)) return;
 
@@ -220,6 +238,7 @@ worker.on("failed", async (job, error) => {
 
 async function shutdown() {
   await worker.close();
+  await shutdownErrorLogAnalyzer();
   await prisma.$disconnect();
   process.exit(0);
 }

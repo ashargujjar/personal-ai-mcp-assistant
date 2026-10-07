@@ -22,6 +22,13 @@ import {
   prepareGitHubRepositoryForAnalysis,
 } from "../services/github-analyzer-preparation.service";
 import { sendGitHubRepositoryToAnalyzer } from "../services/github-analyzer.service";
+import {
+  installProcessErrorLogAnalyzer,
+  reportBackendError,
+  shutdownErrorLogAnalyzer,
+} from "../services/error-log-analyzer.service";
+
+installProcessErrorLogAnalyzer("github-review-worker");
 
 const worker = new Worker<GitHubRepositoryReviewJob>(
   GITHUB_REVIEW_QUEUE_NAME,
@@ -157,6 +164,16 @@ worker.on("completed", (job) => {
 
 worker.on("failed", (job, error) => {
   console.error(`[github-review-worker] failed job ${job?.id}`, error);
+  reportBackendError(error, {
+    source: "github-review-worker:failed",
+    job: {
+      id: job?.id,
+      name: job?.name,
+      attemptsMade: job?.attemptsMade,
+      attempts: job?.opts.attempts,
+      queueName: GITHUB_REVIEW_QUEUE_NAME,
+    },
+  });
   if (!job) return;
 
   void prisma.gitHubReview.update({
@@ -172,6 +189,7 @@ worker.on("failed", (job, error) => {
 
 async function shutdown() {
   await worker.close();
+  await shutdownErrorLogAnalyzer();
   process.exit(0);
 }
 

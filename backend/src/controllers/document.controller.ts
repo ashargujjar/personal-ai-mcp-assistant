@@ -18,8 +18,7 @@ const latestVersion = {
   },
 };
 
-// Keep the existing frontend response shape while reading file fields from versions.
-// Latest uploaded version is for file management, not a retrieval publication rule.
+ // Latest uploaded version is for file management, not a retrieval publication rule.
 function documentResponse(document: Document & {
   versions: (DocumentVersion & { ingestionJobs: { id: string; status: IngestionStatus }[] })[];
 }) {

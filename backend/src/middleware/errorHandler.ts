@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
+import { reportBackendError } from "../services/error-log-analyzer.service";
 
 export class AppError extends Error {
   statusCode: number;
@@ -11,7 +12,7 @@ export class AppError extends Error {
 
 export function errorHandler(
   err: unknown,
-  _req: Request,
+  req: Request,
   res: Response,
   _next: NextFunction
 ) {
@@ -20,6 +21,11 @@ export function errorHandler(
 
   if (statusCode === 500) {
     console.error(err);
+    reportBackendError(err, {
+      source: "express:errorHandler",
+      statusCode,
+      request: req,
+    });
   }
 
   res.status(statusCode).json({ message });

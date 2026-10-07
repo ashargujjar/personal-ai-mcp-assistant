@@ -9,6 +9,13 @@ import type { ResumeAttachmentJob } from "../queues/resume.types";
 import { downloadGmailAttachment } from "../services/gmail.service";
 import { deletePdf, uploadResumePdf } from "../services/cloudinary";
 import { extractAndStoreResumePdfText } from "../services/resume-pdf-text.service";
+import {
+  installProcessErrorLogAnalyzer,
+  reportBackendError,
+  shutdownErrorLogAnalyzer,
+} from "../services/error-log-analyzer.service";
+
+installProcessErrorLogAnalyzer("resume-attachment-worker");
 
 function resumePublicId(userId: string, searchId: string, applicantId: string) {
   return `resume-searches/${userId}/${searchId}/${applicantId}`;
@@ -147,6 +154,16 @@ const worker = new Worker<ResumeAttachmentJob>(
 
 worker.on("failed", async (job, error) => {
   console.error(`[resume-attachment-worker] failed job ${job?.id}`, error);
+  reportBackendError(error, {
+    source: "resume-attachment-worker:failed",
+    job: {
+      id: job?.id,
+      name: job?.name,
+      attemptsMade: job?.attemptsMade,
+      attempts: job?.opts.attempts,
+      queueName: RESUME_ATTACHMENT_QUEUE_NAME,
+    },
+  });
   if (!job) return;
 
   if (job.attemptsMade < (job.opts.attempts ?? 1)) return;
@@ -180,6 +197,7 @@ worker.on("failed", async (job, error) => {
 
 async function shutdown() {
   await worker.close();
+  await shutdownErrorLogAnalyzer();
   await prisma.$disconnect();
   process.exit(0);
 }

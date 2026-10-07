@@ -13,6 +13,13 @@ import {
   getStoredResumeText,
   scoreResumeAgainstJob,
 } from "../services/resume-ats-scan.service";
+import {
+  installProcessErrorLogAnalyzer,
+  reportBackendError,
+  shutdownErrorLogAnalyzer,
+} from "../services/error-log-analyzer.service";
+
+installProcessErrorLogAnalyzer("resume-ats-scan-worker");
 
 async function markAtsScanCompleteIfDone(searchId: string) {
   const search = await prisma.resumeSearch.findUnique({
@@ -205,6 +212,16 @@ const worker = new Worker<ResumeAtsScanJob>(
 
 worker.on("failed", async (job, error) => {
   console.error(`[resume-ats-scan-worker] failed job ${job?.id}`, error);
+  reportBackendError(error, {
+    source: "resume-ats-scan-worker:failed",
+    job: {
+      id: job?.id,
+      name: job?.name,
+      attemptsMade: job?.attemptsMade,
+      attempts: job?.opts.attempts,
+      queueName: RESUME_ATS_SCAN_QUEUE_NAME,
+    },
+  });
   if (!job || job.attemptsMade < (job.opts.attempts ?? 1)) return;
 
   const { searchId } = job.data;
@@ -230,6 +247,7 @@ worker.on("failed", async (job, error) => {
 
 async function shutdown() {
   await worker.close();
+  await shutdownErrorLogAnalyzer();
   await prisma.$disconnect();
   process.exit(0);
 }
